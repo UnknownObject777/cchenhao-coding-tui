@@ -113,22 +113,20 @@ export class Loop {
         this.publish("approval.decision", { id: call.id, decision });
         if (decision === "deny") {
           // 拒绝回灌成 tool 结果让模型自纠（协议要求每个 tool_call 都有 tool 回复）
-          const output = `tool call denied by approval policy: ${call.name}`;
-          this.publish("tool.result", { id: call.id, name: call.name, ok: false, output });
-          this.messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: output });
+          this.pushToolResult(call, false, `tool call denied by approval policy: ${call.name}`);
           continue;
         }
       }
       const result = await executor.execute(call.name, call.args);
-      this.publish("tool.result", { id: call.id, name: call.name, ok: result.ok, output: result.output });
-      this.messages.push({
-        role: "tool",
-        toolCallId: call.id,
-        name: call.name,
-        content: result.output,
-      });
+      this.pushToolResult(call, result.ok, result.output);
     }
     return false;
+  }
+
+  /** 发布 tool.result 并把 tool 消息回灌进上下文（每个 tool_call 必须有 tool 回复）。 */
+  private pushToolResult(call: ToolCall, ok: boolean, output: string): void {
+    this.publish("tool.result", { id: call.id, name: call.name, ok, output });
+    this.messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: output });
   }
 
   private publish<K extends EngineEventName>(event: K, payload: EngineEvents[K]): void {
