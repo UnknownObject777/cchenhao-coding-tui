@@ -51,6 +51,7 @@ export class StreamingUiController {
         this.currentThinking = undefined;
         this.accumulatedThink = "";
         this.pendingTools.clear();
+        this.lastToolFrame = undefined;
         this.loader.start();
         this.requestRender();
       }),

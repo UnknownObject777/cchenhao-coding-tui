@@ -3,7 +3,7 @@
  * #24：ctrl+o 折叠/展开；展开态也有行数上限防刷屏。
  */
 import { Text, truncateToWidth, visibleWidth, type Component } from "../../../../vendor/pi-tui/src/index.ts";
-import { FAILURE_MARK, MESSAGE_INDENT, STATUS_BULLET, SUCCESS_MARK } from "../../constant/symbols.ts";
+import { FAILURE_MARK, MESSAGE_INDENT, STATUS_BULLET, SUCCESS_MARK, TOOL_FRAME_TOGGLE_KEY } from "../../constant/symbols.ts";
 import { hex } from "../../theme/pi-tui-theme.ts";
 import { layOutBlock } from "./block-layout.ts";
 
@@ -77,15 +77,19 @@ export class ToolCallComponent implements Component {
     const contentWidth = Math.max(1, width - visibleWidth(MESSAGE_INDENT + SUCCESS_MARK));
     const outputLines = output.split("\n");
     const cap = this.expanded ? EXPANDED_MAX_LINES : RESULT_PREVIEW_LINES;
-    const shown = outputLines.slice(0, cap);
+    // 折叠态取头（预览开头），展开态取尾（长日志尾部最有用，对齐 kimi-code）
+    const shown = this.expanded ? outputLines.slice(-cap) : outputLines.slice(0, cap);
     const body = new Text(shown.join("\n"), 0, 0).render(contentWidth);
     const lines = body.map((line, i) => MESSAGE_INDENT + (i === 0 ? mark : "  ") + line);
-    const remaining = outputLines.length - shown.length;
-    if (remaining > 0) {
-      lines.push(MESSAGE_INDENT + "  " + hex("textMuted")(`… (${remaining} more lines)`));
+    const pushHint = (text: string): void => {
+      lines.push(MESSAGE_INDENT + "  " + hex("textMuted")(text));
+    };
+    const hidden = outputLines.length - shown.length;
+    if (hidden > 0) {
+      pushHint(this.expanded ? `… (${hidden} earlier lines truncated)` : `… (${hidden} more lines)`);
     }
     if (outputLines.length > RESULT_PREVIEW_LINES) {
-      lines.push(MESSAGE_INDENT + "  " + hex("textMuted")(this.expanded ? "ctrl+o 折叠" : "ctrl+o 展开"));
+      pushHint(this.expanded ? `${TOOL_FRAME_TOGGLE_KEY} 折叠` : `${TOOL_FRAME_TOGGLE_KEY} 展开`);
     }
     return lines;
   }

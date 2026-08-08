@@ -15,7 +15,8 @@ describe("terminal background detection (#23)", () => {
   it("parses COLORFGBG fallback", () => {
     expect(parseColorFgBg("0;15")).toBe("light");
     expect(parseColorFgBg("15;0")).toBe("dark");
-    expect(parseColorFgBg("7;8")).toBe("light");
+    expect(parseColorFgBg("7;8")).toBe("dark"); // 亮黑≈中灰，按暗色（同 kimi-code）
+    expect(parseColorFgBg("0;7")).toBe("light");
     expect(parseColorFgBg(undefined)).toBeUndefined();
     expect(parseColorFgBg("garbage")).toBeUndefined();
     expect(parseColorFgBg("1;99")).toBeUndefined();

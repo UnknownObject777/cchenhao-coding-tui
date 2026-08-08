@@ -5,3 +5,5 @@ export const SUCCESS_MARK = "✓ ";
 export const FAILURE_MARK = "✗ ";
 /** 消息内容相对 bullet 的缩进（与 STATUS_BULLET 等宽）。 */
 export const MESSAGE_INDENT = "  ";
+/** 工具帧折叠/展开键位（#24）：组件提示与 app.ts 的监听共用此单源。 */
+export const TOOL_FRAME_TOGGLE_KEY = "ctrl+o";

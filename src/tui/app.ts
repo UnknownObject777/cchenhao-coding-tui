@@ -15,6 +15,7 @@ import {
 } from "../../vendor/pi-tui/src/index.ts";
 import { TuiApprovalAnswerer } from "./approval/tui-answerer.ts";
 import { builtinCommands } from "./commands/builtins.ts";
+import { TOOL_FRAME_TOGGLE_KEY } from "./constant/symbols.ts";
 import { FooterComponent } from "./components/chrome/footer.ts";
 import { createLoader } from "./components/chrome/loader.ts";
 import { WelcomeComponent } from "./components/chrome/welcome.ts";
@@ -85,7 +86,7 @@ export function assembleTui(
 
   // ctrl+o：折叠/展开最近的工具帧（#24）
   const detachExpand = tui.addInputListener((data: string): { consume: true } | undefined => {
-    if (matchesKey(data, "ctrl+o") && streamingUi.toggleLastToolFrame()) {
+    if (matchesKey(data, TOOL_FRAME_TOGGLE_KEY) && streamingUi.toggleLastToolFrame()) {
       return { consume: true };
     }
     return undefined;
