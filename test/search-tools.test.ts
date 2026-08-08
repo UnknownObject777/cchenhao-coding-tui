@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
 import { registerBuiltinTools } from "../src/engine/tools/builtins.ts";
 import { globToRegExp } from "../src/engine/tools/search.ts";
-import { TOOL_OUTPUT_MAX_LINES, truncateToolOutput, TRUNCATED_MARKER } from "../src/engine/tools/truncate.ts";
+import { TOOL_OUTPUT_MAX_BYTES, TOOL_OUTPUT_MAX_LINES, truncateToolOutput, TRUNCATED_MARKER } from "../src/engine/tools/truncate.ts";
 
 describe("unified output guard (#37)", () => {
   it("caps lines with a marker", () => {
@@ -23,6 +23,12 @@ describe("unified output guard (#37)", () => {
     const out = truncateToolOutput("x".repeat(60 * 1024));
     expect(out).toContain(TRUNCATED_MARKER);
     expect(Buffer.byteLength(out, "utf8")).toBeLessThan(60 * 1024);
+  });
+
+  it("byte cap is real bytes (CJK-heavy output cannot exceed it 3x)", () => {
+    const out = truncateToolOutput("汉".repeat(40_000)); // 120KB UTF-8
+    expect(out).toContain(TRUNCATED_MARKER);
+    expect(Buffer.byteLength(out, "utf8")).toBeLessThanOrEqual(TOOL_OUTPUT_MAX_BYTES + 64);
   });
 
   it("executor applies the guard to tool results", async () => {

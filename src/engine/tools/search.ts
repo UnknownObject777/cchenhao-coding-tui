@@ -3,7 +3,7 @@
  * 忽略规则是玩具级近似：固定跳过 .git/node_modules + 根 .gitignore 的简单 pattern
  * （目录名、*.ext、纯名字段匹配），不实现完整 gitignore 语义。
  */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolExecutor } from "./executor.ts";
 import { resolveInside } from "./workspace.ts";
@@ -104,8 +104,14 @@ async function walk(root: string, ignore: IgnoreMatcher, maxDepth: number, maxEn
 
 async function isBinaryFile(path: string): Promise<boolean> {
   try {
-    const handle = await readFile(path);
-    return handle.subarray(0, 1024).includes(0);
+    const handle = await open(path, "r");
+    try {
+      const buffer = Buffer.alloc(1024);
+      const { bytesRead } = await handle.read(buffer, 0, 1024, 0);
+      return buffer.subarray(0, bytesRead).includes(0);
+    } finally {
+      await handle.close();
+    }
   } catch {
     return true;
   }
@@ -161,7 +167,7 @@ export function registerSearchTools(executor: ToolExecutor, workspace: string): 
 
   executor.register({
     name: "grep",
-    description: "Search file contents with a regular expression; output path:line:content.",
+    description: "Search file contents with a regular expression; output path:line:content. Skips binaries and files over 1MB.",
     parameters: {
       type: "object",
       properties: {

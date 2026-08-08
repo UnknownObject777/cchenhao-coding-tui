@@ -7,8 +7,8 @@ import type { ApprovalCall } from "./gate.ts";
 
 export type RuleLevel = "allow" | "confirm" | "deny";
 
-/** 只读工具：自动放行。 */
-const READ_ONLY_TOOLS = new Set(["read_file", "list_files", "grep", "glob", "web_search", "web_fetch"]);
+/** 只读工具：自动放行。web_search/web_fetch 随 #35/#36 落地时加入。 */
+const READ_ONLY_TOOLS = new Set(["read_file", "list_files", "grep", "glob"]);
 
 /** run_command 无害 pattern（命中即放行）：只读/构建/测试类。 */
 const SAFE_COMMAND_PATTERNS: RegExp[] = [
