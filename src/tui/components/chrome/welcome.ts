@@ -23,11 +23,16 @@ export class WelcomeComponent implements Component {
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width);
+    const title = ` ${this.info.toolName} v${this.info.version} `;
+    const ruleWidth = Math.max(title.length, Math.min(safeWidth, 60));
+    const rule = hex("border")("─".repeat(ruleWidth));
     const lines = [
       "",
-      hex("textStrong")(` ${this.info.toolName}`) + hex("textMuted")(` v${this.info.version}`),
+      rule,
+      hex("textStrong")(title),
       hex("textDim")(` model: ${this.info.model} · cwd: ${this.info.cwd}`),
       hex("textMuted")(" 输入消息开始对话，/ 查看命令"),
+      rule,
     ];
     return lines.map((line) => truncateToWidth(line, safeWidth, "…"));
   }
