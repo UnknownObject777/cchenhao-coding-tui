@@ -1,0 +1,25 @@
+{
+  "name": "mini-coding-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "迷你 coding agent 玩具：引擎自写（loop/llmRequester/toolExecutor/wire），TUI 照搬 kimi-code 分层",
+  "bin": {
+    "agent": "./src/cli/main.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/cli/main.ts",
+    "agent": "tsx src/cli/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
