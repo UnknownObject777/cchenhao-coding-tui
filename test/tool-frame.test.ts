@@ -49,6 +49,7 @@ describe("tool frame collapse/expand (#24)", () => {
       sessionPath: join(dir, "wire.jsonl"),
       history: [],
       approvalMemory: [],
+      systemPrompt: "",
     };
 
     const h = createTuiHarness(100, 40);

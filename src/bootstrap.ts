@@ -2,11 +2,14 @@ import { createComposedGate, alwaysMemoryFrom } from "./engine/approval/composed
 import type { ApprovalGate } from "./engine/approval/gate.ts";
 import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
 import { EventBus } from "./engine/events.ts";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { resolveKimiCredentials } from "./engine/llm/credentials.ts";
 import { FakeLLM } from "./engine/llm/fake.ts";
 import { KimiLLM } from "./engine/llm/kimi.ts";
 import type { LLMRequester, Message } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
+import { describeConfigSources, loadEffectiveConfig } from "./engine/config.ts";
 import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
 import { ToolExecutor } from "./engine/tools/executor.ts";
@@ -31,6 +34,8 @@ export interface Agent {
   history: RebuiltMessage[];
   /** 从 wire 还原的「始终允许」记忆键（#26 的会话记忆在恢复后延续）。 */
   approvalMemory: string[];
+  /** 生效的系统 prompt（#39：显式配置 > .agent.md > 内置默认）。 */
+  systemPrompt: string;
 }
 
 export interface BootstrapOptions {
@@ -43,6 +48,8 @@ export interface BootstrapOptions {
   session?: "new" | "continue";
   /** 测试缝：覆盖会话根目录（默认 ~/.mini-agent/sessions）。 */
   sessionRoot?: string;
+  /** 测试缝：覆盖 home 目录（配置文件用户级查找）。 */
+  homeDir?: string;
 }
 
 /** 组合根：显式装配 Engine 各部件。 */
@@ -76,17 +83,40 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   const executor = new ToolExecutor();
   registerBuiltinTools(executor, workspace);
 
+  // 配置合并（#38）：env > 项目级 .agent.json > 用户级 config.json
+  const config = await loadEffectiveConfig(workspace, options.homeDir);
+
+  // 系统 prompt（#39）：显式配置 > 项目级 .agent.md > 内置默认
+  let systemPrompt = SYSTEM_PROMPT;
+  let promptSource = "builtin default";
+  if (config.systemPromptFile !== undefined) {
+    systemPrompt = await readFile(config.systemPromptFile, "utf8");
+    promptSource = config.systemPromptFile;
+  } else {
+    const agentMd = join(workspace, ".agent.md");
+    try {
+      systemPrompt = await readFile(agentMd, "utf8");
+      promptSource = agentMd;
+    } catch {
+      // 无项目级覆盖，用默认
+    }
+  }
+
   let llm: LLMRequester;
   let model: string;
   if (options.fake) {
     llm = demoScript();
     model = "fake-llm";
   } else {
-    const credentials = await resolveKimiCredentials();
+    const credentials = await resolveKimiCredentials(config);
     llm = new KimiLLM(credentials);
     model = credentials.model;
     // web 工具复用同一份订阅凭证（#3：search/fetch 与 LLM 共用 baseUrl + Bearer）
     registerWebTools(executor, { apiKey: credentials.apiKey, baseUrl: credentials.baseUrl });
+    // 生效来源打印（脱敏：只打字段与来源，不打值）
+    process.stderr.write(
+      `[config]\n${describeConfigSources(config, "kimi-code 订阅 OAuth")}\n  systemPrompt ← ${promptSource}\n`,
+    );
   }
 
   const approvalGate: ApprovalGate | undefined = options.printApproval
@@ -104,13 +134,13 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     executor,
     bus,
     wire,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt,
     ...(approvalGate ? { approvalGate } : {}),
   });
   if (contextMessages.length > 0) {
     loop.loadHistory(contextMessages);
   }
-  return { loop, bus, wire, workspace, model, sessionPath, history, approvalMemory };
+  return { loop, bus, wire, workspace, model, sessionPath, history, approvalMemory, systemPrompt };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

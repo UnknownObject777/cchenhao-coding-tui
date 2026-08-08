@@ -13,15 +13,16 @@ const DEFAULT_MODEL = "kimi-for-coding";
 const OAUTH_FILE = join(homedir(), ".kimi-code", "credentials", "kimi-code.json");
 
 /**
- * 凭证优先级：KIMI_API_KEY 环境变量 > kimi-code CLI 的 OAuth 订阅凭证。
+ * 凭证优先级（#38/#9）：env（KIMI_API_KEY）> 配置文件合并值（项目级 > 用户级）> kimi-code 订阅 OAuth。
  * OAuth access_token 有效期约 15 分钟，过期时提示用户先跑一次 `kimi` 刷新（玩具不做自动刷新）。
  */
-export async function resolveKimiCredentials(): Promise<KimiCredentials> {
-  const baseUrl = process.env["KIMI_BASE_URL"] ?? DEFAULT_BASE_URL;
-  const model = process.env["KIMI_MODEL"] ?? DEFAULT_MODEL;
+export async function resolveKimiCredentials(config: Partial<KimiCredentials> = {}): Promise<KimiCredentials> {
+  const baseUrl = process.env["KIMI_BASE_URL"] ?? config.baseUrl ?? DEFAULT_BASE_URL;
+  const model = process.env["KIMI_MODEL"] ?? config.model ?? DEFAULT_MODEL;
 
   const envKey = process.env["KIMI_API_KEY"];
   if (envKey) return { apiKey: envKey, baseUrl, model };
+  if (config.apiKey !== undefined) return { apiKey: config.apiKey, baseUrl, model };
 
   let raw: string;
   try {

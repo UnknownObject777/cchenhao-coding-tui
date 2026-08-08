@@ -61,6 +61,7 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
     sessionPath: join(dir, "wire.jsonl"),
     history: [],
     approvalMemory: [],
+    systemPrompt: "",
   } satisfies Agent;
 
   const onExit = vi.fn();
