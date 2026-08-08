@@ -9,6 +9,10 @@ export interface WireRow {
 }
 
 /** append-only 事件日志：每行一个 JSON，seq 单调递增。只做追加，不做检查点。 */
+const defaultWarn = (message: string): void => {
+  process.stderr.write(message + "\n");
+};
+
 export class WireService {
   private nextSeq: number | undefined;
 
@@ -30,7 +34,11 @@ export class WireService {
     return row;
   }
 
-  async readAll(): Promise<WireRow[]> {
+  /**
+   * 读出全部行。坏 JSON 行跳过并告警（带行号，#42）——
+   * 冷重建不能被单行损坏整体拖死。
+   */
+  async readAll(onWarn: (message: string) => void = defaultWarn): Promise<WireRow[]> {
     let text: string;
     try {
       text = await readFile(this.path, "utf8");
@@ -38,10 +46,18 @@ export class WireService {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
-    return text
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((line) => JSON.parse(line) as WireRow);
+    const rows: WireRow[] = [];
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      if (line.trim() === "") continue;
+      try {
+        rows.push(JSON.parse(line) as WireRow);
+      } catch {
+        onWarn(`wire: 跳过损坏行 ${i + 1}（${line.slice(0, 50)}${line.length > 50 ? "…" : ""}）`);
+      }
+    }
+    return rows;
   }
 
   /** 删除 wire 日志（/delete 用）；下次 append 重新从 seq 1 开始。 */

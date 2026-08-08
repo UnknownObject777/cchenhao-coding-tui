@@ -98,6 +98,22 @@ describe("wire", () => {
     await expect(new WireService(wirePath).clear()).resolves.toBeUndefined();
   });
 
+  it("readAll skips corrupted lines with a line-numbered warning (#42)", async () => {
+    const wire = new WireService(wirePath);
+    await wire.append({ type: "turn.started", turnId: 1, prompt: "good" });
+    // 手工塞一行坏 JSON
+    const { appendFile } = await import("node:fs/promises");
+    await appendFile(wirePath, "{broken json\n", "utf8");
+    await wire.append({ type: "turn.ended", turnId: 1, reason: "finish" });
+
+    const warnings: string[] = [];
+    const rows = await new WireService(wirePath).readAll((m) => warnings.push(m));
+
+    expect(rows.map((r) => r.event.type)).toEqual(["turn.started", "turn.ended"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("行 2");
+  });
+
   it("rebuilder skips approval events without breaking the fold", async () => {
     const events: EngineEvent[] = [
       { type: "turn.started", turnId: 1, prompt: "hi" },
