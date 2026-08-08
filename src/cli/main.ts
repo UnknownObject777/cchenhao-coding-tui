@@ -68,6 +68,7 @@ async function main(): Promise<void> {
     version: pkg.version,
     model: agent.model,
     cwd: process.cwd(),
+    approvalMode: "interactive",
   });
 }
 

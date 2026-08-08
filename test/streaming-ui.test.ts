@@ -152,14 +152,15 @@ describe("StreamingUiController", () => {
 });
 
 describe("chrome components", () => {
-  it("footer renders model and cwd", async () => {
+  it("footer renders model, cwd and approval mode (#48)", async () => {
     const h = createTuiHarness(80, 24);
-    h.tui.addChild(new FooterComponent({ model: "kimi-for-coding", cwd: "D:/proj" }));
+    h.tui.addChild(new FooterComponent({ model: "kimi-for-coding", cwd: "D:/proj", approvalMode: "rules-only" }));
     await h.tui.start();
     await h.render();
     const vp = h.viewport();
     expect(vp).toContain("kimi-for-coding");
     expect(vp).toContain("D:/proj");
+    expect(vp).toContain("审批:规则");
     h.stop();
   });
 
