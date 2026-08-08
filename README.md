@@ -69,7 +69,7 @@ CI：GitHub Actions 三平台矩阵（Windows / Linux / macOS），typecheck + �
 | 玩具 | kimi-code | 职责 |
 | --- | --- | --- |
 | `src/engine/loop.ts` | `packages/agent-core*/`（loop/step 驱动） | turn 状态机：LLM 流 → 事件 → tool call 回灌 |
-| `src/engine/events.ts` | `packages/kimi-code-sdk` 事件契约 | EventBus + 领域事件（引擎↔UI 唯一通道） |
+| `src/engine/events.ts` | `packages/transcript`（事件契约与回放） | EventBus + 领域事件（引擎↔UI 唯一通道） |
 | `src/engine/wire.ts` | session transcript / wire 日志 | append-only 事件落盘 + Rebuilder 双通道冷重建 |
 | `src/engine/session.ts` | session storage | 会话按工作区分文件 |
 | `src/engine/context.ts` | context window / compaction | 滑动窗口截断（玩具无真压缩） |
