@@ -45,6 +45,16 @@ describe("TUI end-to-end smoke (fake LLM)", () => {
     await h.render();
     h.terminal.sendInput("\r");
 
+    // write_file 触发审批帧（#28 起 TUI 有审批闸），答 y 放行
+    await vi.waitFor(
+      async () => {
+        await h.render();
+        expect(h.viewport()).toContain("等待审批");
+      },
+      { timeout: 5000, interval: 50 },
+    );
+    h.terminal.sendInput("y");
+
     // fake 脚本：write_file → read_file → 总结；等 turn 收尾
     await vi.waitFor(
       async () => {
