@@ -1,18 +1,17 @@
-import { ChunkConverter, parseSseData, type ChatChunk } from "./kimi-stream.js";
-import type { LLMRequester, Message, ModelEvent, ToolSpec } from "./types.js";
-
-export interface KimiLLMOptions {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-}
+import type { KimiCredentials } from "./credentials.ts";
+import { ChunkConverter, parseSseData, type ChatChunk } from "./kimi-stream.ts";
+import type { LLMRequester, Message, ModelEvent, ToolSpec } from "./types.ts";
 
 /**
  * 真实 LLM 实现：fetch 直连 OpenAI 兼容 chat completions，SSE 流式解析。
  * 只做 HTTP 拉取：不重试、不刷新鉴权、不做背压——超出范围直接抛错，保持玩具诚实。
  */
 export class KimiLLM implements LLMRequester {
-  constructor(private readonly options: KimiLLMOptions) {}
+  private readonly options: KimiCredentials;
+
+  constructor(options: KimiCredentials) {
+    this.options = options;
+  }
 
   async *request(messages: Message[], tools: ToolSpec[]): AsyncIterable<ModelEvent> {
     const { apiKey, baseUrl, model } = this.options;

@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { EngineEvent } from "../src/engine/events.js";
-import { Rebuilder, WireService } from "../src/engine/wire.js";
+import type { EngineEvent } from "../src/engine/events.ts";
+import { Rebuilder, WireService } from "../src/engine/wire.ts";
 
 const turn1: EngineEvent[] = [
   { type: "turn.started", turnId: 1, prompt: "hello" },

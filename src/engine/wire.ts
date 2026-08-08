@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { EngineEvent } from "./events.js";
+import type { EngineEvent } from "./events.ts";
 
 export interface WireRow {
   seq: number;
@@ -11,12 +11,16 @@ export interface WireRow {
 export class WireService {
   private nextSeq: number | undefined;
 
-  constructor(private readonly path: string) {}
+  private readonly path: string;
+
+  constructor(path: string) {
+    this.path = path;
+  }
 
   async append(event: EngineEvent): Promise<WireRow> {
     if (this.nextSeq === undefined) {
       const existing = await this.readAll();
-      this.nextSeq = existing.length + 1;
+      this.nextSeq = existing.reduce((max, row) => Math.max(max, row.seq), 0) + 1;
     }
     const row: WireRow = { seq: this.nextSeq, event };
     await mkdir(dirname(this.path), { recursive: true });

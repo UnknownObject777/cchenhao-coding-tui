@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChunkConverter, parseSseData, type ChatChunk } from "../src/engine/llm/kimi-stream.js";
+import { ChunkConverter, parseSseData, type ChatChunk } from "../src/engine/llm/kimi-stream.ts";
 
 const chunk = (obj: object): ChatChunk => obj as ChatChunk;
 

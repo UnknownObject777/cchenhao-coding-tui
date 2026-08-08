@@ -1,4 +1,4 @@
-import type { ModelEvent } from "./types.js";
+import type { ModelEvent } from "./types.ts";
 
 /** OpenAI 兼容 chat completion 流 chunk 的最小类型（只声明我们用到的字段）。 */
 export interface ChatChunk {

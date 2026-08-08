@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import type { ToolExecutor } from "./executor.js";
+import type { ToolExecutor } from "./executor.ts";
 
 /** 内置玩具工具：read_file / write_file / run_command。文件操作限制在工作区内。 */
 export function registerBuiltinTools(executor: ToolExecutor, workspace: string): void {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { bootstrap } from "../bootstrap.js";
-import { runPrompt } from "./run-prompt.js";
+import { bootstrap } from "../bootstrap.ts";
+import { errorMessage } from "../engine/tools/executor.ts";
+import { runPrompt } from "./run-prompt.ts";
 
 const USAGE = `mini coding agent
 
@@ -39,6 +40,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exit(1);
 });

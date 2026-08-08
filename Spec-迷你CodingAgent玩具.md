@@ -77,7 +77,7 @@ tags:
 
 - `Loop`：turn 状态机。接收用户输入 → 组装 messages → 消费 LLM 流 → 对每个 event 发布对应领域事件 → 收到 `tool_call` 时暂停、交给 executor、结果回灌 → 直到 finish → 发 `turn.ended`。
 - `LLMRequester`（接口 + 实现）：暴露 `request(messages, tools): AsyncIterable<ModelEvent>`；`ModelEvent` 判别联合为 `text` / `think` / `tool_call` / `finish`。一个 **fake 实现**（读脚本流、含预置 tool call）用于无 key 演示与测试；一个 **真实实现** 接 Kimi/OpenAI 兼容端点。
-- `ToolExecutor`：`register(name, definition)` 注册表 + `execute(name, args)` 执行 + 结果对象。内置两个玩具工具：`read_file`（读工作区文件）与 `run_command`（执行 shell 命令，超时保护）。
+- `ToolExecutor`：`register(name, definition)` 注册表 + `execute(name, args)` 执行 + 结果对象。内置三个玩具工具：`read_file`（读工作区文件）、`write_file`（写工作区文件）与 `run_command`（执行 shell 命令，超时保护）。未注册工具返回结构化错误结果而非抛错（让模型有机会自纠正）。
 - `EventBus`：极简类型化事件发布/订阅（`on(event, cb)` / `emit`），引擎与 UI 的唯一通信通道；事件类型定义放引擎侧。
 - `WireService`：把事件按序列 append 到 `wire.jsonl`（每行 JSON，带 `seq`），并提供 `readAll()` 供冷重建。这是对 kimi-code `wire` 概念的最小致敬——**只做追加，不做检查点**。
 - `Rebuilder`：读 wire.jsonl 按 seq 折叠出消息列表，实现冷会话重建。
@@ -102,7 +102,7 @@ tags:
 
 - **真实 LLM 实现只做 HTTP 拉取，不做 stream 之外的高级能力**：不处理工具协议细节、不重试、不鉴权重刷新，够用即可——超出范围直接抛错，保持玩具诚实。
 - **事件契约是核心**：UI 只认事件不认引擎内部状态；controllers 只做"事件 → 组件更新"，组件不反向触碰引擎。
-- **tool_call 流回灌**：fake 与真实实现都按"模型流先吐出 tool_call → executor 执行 → 结果作为 user 角色消息再喂一轮"的顺序驱动，与 kimi-code 的 loop→toolExecutor→promptService 循环同构。
+- **tool_call 流回灌**：fake 与真实实现都按"模型流先吐出 tool_call → executor 执行 → 结果作为 tool 角色消息再喂一轮"的顺序驱动，与 kimi-code 的 loop→toolExecutor→promptService 循环同构。
 - **wire 的 seq 单调递增**，每行一个事件；冷重建不追求无损，只恢复消息与工具帧的大致顺序（对齐"持久化是唯一事实源、UI 是投影"的认知）。
 - **TUI 只做"照搬组织方式"，不做"照搬全部代码"**：controllers 只保留事件路由 + 流式渲染两个；components 只保留 chrome/messages/editor 三类；theme 只保留 token + markdown 主题。砍到能徒手写完的规模，但目录形状与职责边界严格对齐 kimi-code。
 - 项目结构从零新建，**不改仓库内任何现有包**；`@moonshot-ai/pi-tui` 只作为依赖被消费，不 fork 不修改。

@@ -1,4 +1,4 @@
-import type { LLMRequester, Message, ModelEvent, ToolSpec } from "./types.js";
+import type { LLMRequester, Message, ModelEvent, ToolSpec } from "./types.ts";
 
 /**
  * 预置脚本的假 LLM：每一轮 request() 弹出脚本中的下一轮事件。
@@ -9,7 +9,11 @@ export class FakeLLM implements LLMRequester {
   readonly requests: Message[][] = [];
   private round = 0;
 
-  constructor(private readonly script: ModelEvent[][]) {}
+  private readonly script: ModelEvent[][];
+
+  constructor(script: ModelEvent[][]) {
+    this.script = script;
+  }
 
   async *request(messages: Message[], _tools: ToolSpec[]): AsyncIterable<ModelEvent> {
     this.requests.push(structuredClone(messages));

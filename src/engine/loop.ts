@@ -1,7 +1,7 @@
-import type { EventBus, EngineEventName, EngineEvents } from "./events.js";
-import type { LLMRequester, Message, ToolCall } from "./llm/types.js";
-import type { ToolExecutor } from "./tools/executor.js";
-import type { WireService } from "./wire.js";
+import type { EventBus, EngineEventName, EngineEvents } from "./events.ts";
+import type { LLMRequester, Message, ToolCall } from "./llm/types.ts";
+import { errorMessage, type ToolExecutor } from "./tools/executor.ts";
+import type { WireService } from "./wire.ts";
 
 export interface LoopOptions {
   llm: LLMRequester;
@@ -22,7 +22,10 @@ export class Loop {
   private turnCount = 0;
   private wireQueue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly options: LoopOptions) {
+  private readonly options: LoopOptions;
+
+  constructor(options: LoopOptions) {
+    this.options = options;
     if (options.systemPrompt !== "") {
       this.messages.push({ role: "system", content: options.systemPrompt });
     }
@@ -49,7 +52,7 @@ export class Loop {
       this.publish("turn.ended", {
         turnId,
         reason: "error",
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     await this.wireQueue;
@@ -60,7 +63,6 @@ export class Loop {
     const { llm, executor } = this.options;
     let assistantText = "";
     const toolCalls: ToolCall[] = [];
-    let finishReason = "stop";
 
     for await (const event of llm.request(this.messages, executor.definitions())) {
       switch (event.type) {
@@ -76,7 +78,6 @@ export class Loop {
           this.publish("tool.call", { id: event.id, name: event.name, args: event.args });
           break;
         case "finish":
-          finishReason = event.reason;
           break;
       }
     }
@@ -88,7 +89,9 @@ export class Loop {
     };
     this.messages.push(assistantMessage);
 
-    if (toolCalls.length === 0 || finishReason === "stop") {
+    // 只要模型吐了 tool_call 就必须执行并回灌——即使 finish_reason 是 "stop"，
+    // 否则带 toolCalls 的 assistant 消息没有对应 tool 回复，下一轮请求会被协议拒收。
+    if (toolCalls.length === 0) {
       return true;
     }
 

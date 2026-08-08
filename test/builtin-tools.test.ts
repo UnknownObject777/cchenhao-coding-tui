@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { registerBuiltinTools } from "../src/engine/tools/builtins.js";
-import { ToolExecutor } from "../src/engine/tools/executor.js";
+import { registerBuiltinTools } from "../src/engine/tools/builtins.ts";
+import { ToolExecutor } from "../src/engine/tools/executor.ts";
 
 describe("builtin tools", () => {
   let dir: string;

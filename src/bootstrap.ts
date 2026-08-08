@@ -1,13 +1,13 @@
 import { join } from "node:path";
-import { EventBus } from "./engine/events.js";
-import { resolveKimiCredentials } from "./engine/llm/credentials.js";
-import { FakeLLM } from "./engine/llm/fake.js";
-import { KimiLLM } from "./engine/llm/kimi.js";
-import type { LLMRequester } from "./engine/llm/types.js";
-import { Loop } from "./engine/loop.js";
-import { registerBuiltinTools } from "./engine/tools/builtins.js";
-import { ToolExecutor } from "./engine/tools/executor.js";
-import { WireService } from "./engine/wire.js";
+import { EventBus } from "./engine/events.ts";
+import { resolveKimiCredentials } from "./engine/llm/credentials.ts";
+import { FakeLLM } from "./engine/llm/fake.ts";
+import { KimiLLM } from "./engine/llm/kimi.ts";
+import type { LLMRequester } from "./engine/llm/types.ts";
+import { Loop } from "./engine/loop.ts";
+import { registerBuiltinTools } from "./engine/tools/builtins.ts";
+import { ToolExecutor } from "./engine/tools/executor.ts";
+import { WireService } from "./engine/wire.ts";
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
 Your workspace is the current directory. \

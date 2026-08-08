@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EventBus, type EngineEvent } from "../src/engine/events.js";
-import { FakeLLM } from "../src/engine/llm/fake.js";
-import { Loop } from "../src/engine/loop.js";
-import { ToolExecutor } from "../src/engine/tools/executor.js";
-import { WireService } from "../src/engine/wire.js";
+import { EventBus, type EngineEvent } from "../src/engine/events.ts";
+import { FakeLLM } from "../src/engine/llm/fake.ts";
+import { Loop } from "../src/engine/loop.ts";
+import { ToolExecutor } from "../src/engine/tools/executor.ts";
+import { WireService } from "../src/engine/wire.ts";
 
 function setup(script: ConstructorParameters<typeof FakeLLM>[0], wirePath?: string) {
   const bus = new EventBus();
@@ -131,6 +131,28 @@ describe("loop", () => {
 
     expect(events[0]).toMatchObject({ type: "tool.result", ok: false });
     expect(events[1]).toMatchObject({ type: "turn.ended", reason: "finish" });
+  });
+
+  it("still executes tool calls when the stream ends with finish_reason stop", async () => {
+    const { loop, events, llm } = setup([
+      // 模型吐了 tool_call 但 finish_reason 是 "stop"（真实 API 偶发）——工具仍须执行并回灌。
+      [
+        { type: "tool_call", id: "c1", name: "read_file", args: { path: "a.txt" } },
+        { type: "finish", reason: "stop" },
+      ],
+      [{ type: "text", text: "got it" }, { type: "finish", reason: "stop" }],
+    ]);
+
+    await loop.runTurn("read a.txt");
+
+    expect(events.map((e) => e.type)).toEqual([
+      "turn.started",
+      "tool.call",
+      "tool.result",
+      "assistant.delta",
+      "turn.ended",
+    ]);
+    expect(llm.requests[1]!.some((m) => m.role === "tool")).toBe(true);
   });
 
   it("appends every emitted event to the wire log", async () => {

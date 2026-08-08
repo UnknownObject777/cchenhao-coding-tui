@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ToolExecutor } from "../src/engine/tools/executor.js";
+import { ToolExecutor } from "../src/engine/tools/executor.ts";
 
 describe("toolExecutor", () => {
   it("executes a registered tool and passes args through", async () => {
