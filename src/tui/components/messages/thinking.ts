@@ -24,8 +24,9 @@ export class ThinkingComponent implements Component {
 
     const safeWidth = Math.max(1, width);
     const firstLine = this.text.split("\n").find((line) => line.trim() !== "") ?? "";
-    const folded = this.text.length > firstLine.length || firstLine.length > THINKING_PREVIEW_CHARS;
-    const preview = firstLine.slice(0, THINKING_PREVIEW_CHARS) + (folded ? " …" : "");
+    const isMultiLine = this.text.length > firstLine.length;
+    const isTooLong = firstLine.length > THINKING_PREVIEW_CHARS;
+    const preview = firstLine.slice(0, THINKING_PREVIEW_CHARS) + (isMultiLine || isTooLong ? " …" : "");
 
     const lines = [
       "",

@@ -135,6 +135,20 @@ describe("StreamingUiController", () => {
     expect(vp).toContain("…");
     expect(vp).not.toContain("第二行");
   });
+
+  it("late think deltas update the original block in place (stays above the reply)", async () => {
+    const { h, bus } = await mountWithController();
+    bus.emit("turn.started", { turnId: 1, prompt: "hi" });
+    bus.emit("assistant.think", { text: "先想" });
+    bus.emit("assistant.delta", { text: "正文" });
+    bus.emit("assistant.think", { text: "，迟到的思考" });
+    await h.render();
+    const vp = h.viewport();
+    // 只有一个 thinking 块，且在正文上方；迟到的内容并进去了
+    expect(vp.match(/thinking/g)?.length).toBe(1);
+    expect(vp).toContain("迟到的思考");
+    expect(vp.indexOf("thinking")).toBeLessThan(vp.indexOf("正文"));
+  });
 });
 
 describe("chrome components", () => {

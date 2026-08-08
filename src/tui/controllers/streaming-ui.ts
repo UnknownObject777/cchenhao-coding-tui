@@ -45,16 +45,17 @@ export class StreamingUiController {
   start(): void {
     this.unsubscribes.push(
       this.bus.on("turn.started", () => {
-        this.accumulated = "";
-        this.accumulatedThink = "";
-        this.currentAssistant = undefined;
+        this.sealStreamState();
         this.currentThinking = undefined;
+        this.accumulatedThink = "";
         this.pendingTools.clear();
         this.loader.start();
         this.requestRender();
       }),
       this.bus.on("assistant.think", ({ text }) => {
         this.accumulatedThink += text;
+        // 同一 turn 的思考块只建一次：封版后迟到的 think 仍更新原块（留在正文上方），
+        // 不在正文下方另起新块
         if (this.currentThinking === undefined) {
           this.currentThinking = new ThinkingComponent();
           this.chat.addChild(this.currentThinking);
@@ -64,9 +65,6 @@ export class StreamingUiController {
       }),
       this.bus.on("assistant.delta", ({ text }) => {
         this.loader.hide();
-        // 正文开始 = 思考块封版（折叠留在上方，不混进 Markdown 回复）
-        this.currentThinking = undefined;
-        this.accumulatedThink = "";
         this.accumulated += text;
         if (this.currentAssistant === undefined) {
           this.currentAssistant = new AssistantMessageComponent();
@@ -77,11 +75,8 @@ export class StreamingUiController {
       }),
       this.bus.on("tool.call", ({ id, name, args }) => {
         this.loader.hide();
-        // 当前 assistant/思考块封版：工具帧之后的内容属于新块
-        this.currentAssistant = undefined;
-        this.currentThinking = undefined;
-        this.accumulated = "";
-        this.accumulatedThink = "";
+        // 当前 assistant 块封版：工具帧之后的内容属于新块
+        this.sealStreamState();
         const frame = new ToolCallComponent(name, args);
         this.pendingTools.set(id, frame);
         this.chat.addChild(frame);
@@ -94,16 +89,19 @@ export class StreamingUiController {
       }),
       this.bus.on("turn.ended", ({ reason, error }) => {
         this.loader.hide();
-        this.currentAssistant = undefined;
-        this.currentThinking = undefined;
-        this.accumulated = "";
-        this.accumulatedThink = "";
+        this.sealStreamState();
         if (reason === "error" && error !== undefined) {
           this.chat.addChild(errorLine(error));
         }
         this.requestRender();
       }),
     );
+  }
+
+  /** 封版当前流式块（assistant 文本；思考块引用保留，迟到的 think 更新原块）。 */
+  private sealStreamState(): void {
+    this.currentAssistant = undefined;
+    this.accumulated = "";
   }
 
   stop(): void {

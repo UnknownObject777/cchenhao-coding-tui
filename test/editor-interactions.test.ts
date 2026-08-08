@@ -64,6 +64,16 @@ describe("editor interactions", () => {
     );
   });
 
+  it("shift+enter also inserts a newline without submitting (#22)", async () => {
+    const h = await setupApp();
+    h.terminal.sendInput("第一行");
+    h.terminal.sendInput("\u{1B}[13;2~"); // kitty 序列的 shift+enter（pi-tui keybindings 默认换行键位之一）
+    h.terminal.sendInput("第二行");
+    await h.render();
+    expect(h.viewport()).toContain("第二行");
+    expect(h.viewport()).not.toContain("✨");
+  });
+
   it("bracketed multi-line paste does not submit (#22)", async () => {
     const h = await setupApp();
     h.terminal.sendInput("\u{1B}[200~粘贴第一行\n粘贴第二行\u{1B}[201~");

@@ -1,6 +1,5 @@
 /**
- * welcome 块：启动时展示工具名、模型、工作区与提示语。
- * 更完整的 banner 形态属于 #19。
+ * welcome 块：启动时展示工具名、模型、工作区与提示语（#19：banner 框线）。
  */
 import { truncateToWidth, type Component } from "../../../../vendor/pi-tui/src/index.ts";
 import { hex } from "../../theme/pi-tui-theme.ts";
