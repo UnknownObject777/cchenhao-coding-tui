@@ -8,6 +8,8 @@ import { currentTheme } from "../src/tui/theme/theme.ts";
 // vitest 环境非 TTY，chalk 默认 level 0 不着色；强制 truecolor 让样式断言确定。
 chalk.level = 3;
 
+const ESC = "\u{1B}";
+
 const EXPECTED_TOKENS: (keyof ColorPalette)[] = [
   "primary",
   "accent",
@@ -40,8 +42,7 @@ const MARKDOWN_THEME_METHODS = [
   "underline",
 ] as const;
 
-// eslint-disable-next-line no-control-regex
-const ANSI = /\[[0-9;]*m/;
+const ANSI = /\u{1B}\[[0-9;]*m/u;
 
 describe("theme colors", () => {
   it("dark palette covers every token with a hex value", () => {
@@ -67,7 +68,7 @@ describe("createMarkdownTheme", () => {
 
   it("styles come from palette tokens, not chalk named colors", () => {
     const theme = createMarkdownTheme();
-    expect(theme.heading("# Title")).toMatch(ANSI);
+    expect(theme.heading("Title")).toMatch(ANSI);
     expect(theme.link("x")).toMatch(ANSI);
     expect(theme.quote("q")).toMatch(ANSI);
   });
@@ -75,6 +76,15 @@ describe("createMarkdownTheme", () => {
   it("normalizes leading-dash list bullets like kimi-code", () => {
     const theme = createMarkdownTheme();
     expect(theme.listBullet("-")).toContain("•");
+  });
+
+  it("strips literal ### prefix from h3+ headings (pi-tui emits it for h3-h6)", () => {
+    const theme = createMarkdownTheme();
+    // 前缀到达时已包 bold SGR，剥离须跳过前导 ANSI 序列
+    const rendered = theme.heading(`${ESC}[1m### 深标题${ESC}[22m`);
+    expect(rendered).toContain("深标题");
+    expect(rendered).not.toContain("###");
+    expect(theme.heading("###  plain")).not.toContain("###");
   });
 
   it("highlights code plainly (no syntax highlighter in the toy)", () => {

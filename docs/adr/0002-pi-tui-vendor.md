@@ -31,3 +31,4 @@ ADR-0001 约定 pi-tui「不 fork 不修改，只当依赖消费」。本 ADR �
 
 - `vendor/` 目录进入版本库，不参与本仓库 tsconfig 的类型检查严格度要求之外的重构；除 re-vendor 外不手改其中代码。
 - 后续「MVP 完成后不大规模搬代码」的约束同样适用于 vendor 目录：位置一旦定下不再迁移。
+- 配套 tsconfig 调整（2026-08-08 随 #14 落地）：`target`/`lib` 升到 ES2024（vendor `utils.ts` 使用 `v` flag 正则），关闭 `exactOptionalPropertyTypes`（vendor 源码不满足该 flag，且禁止手改）。

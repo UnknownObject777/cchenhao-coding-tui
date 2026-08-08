@@ -6,15 +6,22 @@
 import chalk from "chalk";
 
 import type { EditorTheme, MarkdownTheme } from "../../../vendor/pi-tui/src/index.ts";
+import type { ColorPalette } from "./colors.ts";
 import { currentTheme } from "./theme.ts";
 
-function hex(token: Parameters<typeof currentTheme.color>[0]): (text: string) => string {
+// pi-tui 对 h3-h6 会输出字面 "### " 前缀（h1/h2 不带）；前缀到达时已包 bold
+// SGR，剥离时跳过前导 ANSI 序列，否则 h3+ 渲染成未解析的原始 markdown。
+// 对齐 kimi-code pi-tui-theme.ts 的 HEADING_HASH_PREFIX。
+// eslint-disable-next-line no-control-regex -- 有意匹配 ANSI SGR 的 ESC 字节
+const HEADING_HASH_PREFIX = /^((?:\u001B\[[0-9;]*m)*)#{1,6}[ \t]+/;
+
+function hex(token: keyof ColorPalette): (text: string) => string {
   return (text) => chalk.hex(currentTheme.color(token))(text);
 }
 
 export function createMarkdownTheme(): MarkdownTheme {
   return {
-    heading: (text) => chalk.bold(hex("text")(text)),
+    heading: (text) => chalk.bold(hex("text")(text.replace(HEADING_HASH_PREFIX, "$1"))),
     link: hex("primary"),
     linkUrl: hex("textMuted"),
     code: hex("primary"),
