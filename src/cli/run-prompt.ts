@@ -1,25 +1,16 @@
 import type { Agent } from "../bootstrap.ts";
-import { EventBus, type EngineEventName } from "../engine/events.ts";
+import { ENGINE_EVENT_NAMES } from "../engine/events.ts";
+
+export type OutputFormat = "text" | "stream-json";
+export const OUTPUT_FORMATS: OutputFormat[] = ["text", "stream-json"];
 
 export interface RunPromptOptions {
   /** text（默认）= 人类可读；stream-json = 引擎事件逐行 JSON（#46，供脚本管道消费）。 */
-  outputFormat?: "text" | "stream-json";
+  outputFormat?: OutputFormat;
   /** 测试缝：替换 stdout/stderr 写入。 */
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
-
-const ALL_EVENTS: EngineEventName[] = [
-  "turn.started",
-  "assistant.delta",
-  "assistant.think",
-  "tool.call",
-  "tool.result",
-  "approval.request",
-  "approval.decision",
-  "context.usage",
-  "turn.ended",
-];
 
 /**
  * print 模式驱动（类比 kimi-code 的 run-prompt.ts）：
@@ -32,8 +23,8 @@ export async function runPrompt(agent: Agent, prompt: string, options: RunPrompt
   const err = options.err ?? ((text: string) => process.stderr.write(text));
 
   if (options.outputFormat === "stream-json") {
-    for (const name of ALL_EVENTS) {
-      (bus as EventBus).on(name, (payload: unknown) => {
+    for (const name of ENGINE_EVENT_NAMES) {
+      bus.on(name, (payload: unknown) => {
         out(JSON.stringify({ type: name, ...(payload as Record<string, unknown>) }) + "\n");
       });
     }

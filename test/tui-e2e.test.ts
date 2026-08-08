@@ -26,7 +26,7 @@ describe("TUI end-to-end smoke (fake LLM)", () => {
   async function setupApp(onExit: () => void = () => {}) {
     const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir });
     const h = createTuiHarness(80, 24);
-    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: agent.model, cwd: dir, approvalMode: "interactive" };
+    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: agent.model, cwd: dir, approvalLabel: "审批:交互" };
     assembleTui(h.tui, agent, info, onExit);
     await h.tui.start();
     return { agent, h };

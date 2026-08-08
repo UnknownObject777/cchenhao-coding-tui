@@ -58,7 +58,7 @@ describe("tool frame collapse/expand (#24)", () => {
     };
 
     const h = createTuiHarness(100, 40);
-    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: "fake-llm", cwd: dir, approvalMode: "interactive" };
+    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: "fake-llm", cwd: dir, approvalLabel: "审批:交互" };
     assembleTui(h.tui, agent, info, () => {});
     await h.tui.start();
 

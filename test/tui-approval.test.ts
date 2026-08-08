@@ -25,7 +25,7 @@ describe("TUI approval flow", () => {
   async function setupApp(): Promise<{ h: TuiHarness; workspace: string }> {
     const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir });
     const h = createTuiHarness(100, 30);
-    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: agent.model, cwd: dir, approvalMode: "interactive" };
+    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: agent.model, cwd: dir, approvalLabel: "审批:交互" };
     assembleTui(h.tui, agent, info, () => {});
     await h.tui.start();
     return { h, workspace: dir };

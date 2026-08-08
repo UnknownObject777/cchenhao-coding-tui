@@ -137,7 +137,7 @@ describe("footer context usage (#32)", () => {
     expect(formatTokenCount(12000)).toBe("12k");
     expect(formatTokenCount(CONTEXT_TOKEN_BUDGET)).toBe("256k");
 
-    const footer = new FooterComponent({ model: "m", cwd: "/p", approvalMode: "interactive" });
+    const footer = new FooterComponent({ model: "m", cwd: "/p", approvalLabel: "审批:交互" });
     expect(footer.render(80)[0]).not.toContain("ctx");
     footer.setUsage(12000, 256000);
     expect(footer.render(80)[0]).toContain("ctx 12k/256k");
@@ -147,7 +147,7 @@ describe("footer context usage (#32)", () => {
     const { default: chalk } = await import("chalk");
     chalk.level = 3;
     const { FooterComponent } = await import("../src/tui/components/chrome/footer.ts");
-    const footer = new FooterComponent({ model: "m", cwd: "/p", approvalMode: "interactive" });
+    const footer = new FooterComponent({ model: "m", cwd: "/p", approvalLabel: "审批:交互" });
     footer.setUsage(12000, 256000);
     const calm = footer.render(80)[0]!;
     footer.setUsage(200000, 256000);

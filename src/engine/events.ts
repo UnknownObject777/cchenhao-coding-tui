@@ -24,6 +24,29 @@ export interface EngineEvents {
 
 export type EngineEventName = keyof EngineEvents;
 
+/**
+ * 运行时可用的事件名清单（stream-json 等需要遍历全部事件的消费方用）。
+ * 与 EngineEvents 的一致性由下面的类型级断言保证——加事件不改这里会编译失败。
+ */
+export const ENGINE_EVENT_NAMES: EngineEventName[] = [
+  "turn.started",
+  "assistant.delta",
+  "assistant.think",
+  "tool.call",
+  "tool.result",
+  "approval.request",
+  "approval.decision",
+  "context.usage",
+  "turn.ended",
+];
+
+// 类型级守卫：数组与契约键集互相覆盖
+type _AssertNamesCoverContract = Exclude<keyof EngineEvents, (typeof ENGINE_EVENT_NAMES)[number]> extends never
+  ? true
+  : never;
+const _namesCoverContract: _AssertNamesCoverContract = true;
+void _namesCoverContract;
+
 export type EngineEvent = {
   [K in EngineEventName]: { type: K } & EngineEvents[K];
 }[EngineEventName];

@@ -3,7 +3,7 @@ import pkg from "../../package.json" with { type: "json" };
 import { bootstrap } from "../bootstrap.ts";
 import { errorMessage } from "../engine/tools/executor.ts";
 import { runTui } from "../tui/app.ts";
-import { runPrompt } from "./run-prompt.ts";
+import { OUTPUT_FORMATS, type OutputFormat, runPrompt } from "./run-prompt.ts";
 
 const USAGE = `mini coding agent
 
@@ -31,25 +31,26 @@ async function main(): Promise<void> {
   // 先挑出带值/不带值的已知旗标，余下位置参数再取 -p 的值
   const yes = rawArgs.includes("--yes") || rawArgs.includes("-y");
   const newSession = rawArgs.includes("--new");
-  let outputFormat: string | undefined;
-  const args: string[] = [];
+  let formatValue: string | undefined;
+  const positional: string[] = [];
   for (let i = 0; i < rawArgs.length; i += 1) {
     const a = rawArgs[i]!;
     if (a === "--yes" || a === "-y" || a === "--new") continue;
     if (a === "--output-format") {
-      outputFormat = rawArgs[i + 1];
+      formatValue = rawArgs[i + 1];
       i += 1;
       continue;
     }
-    args.push(a);
+    positional.push(a);
   }
-  if (outputFormat !== undefined && outputFormat !== "text" && outputFormat !== "stream-json") {
-    process.stderr.write(`未知 --output-format: ${outputFormat}（可选 text | stream-json）\n`);
+  const outputFormat = formatValue as OutputFormat | undefined;
+  if (outputFormat !== undefined && !OUTPUT_FORMATS.includes(outputFormat)) {
+    process.stderr.write(`未知 --output-format: ${String(formatValue)}（可选 ${OUTPUT_FORMATS.join(" | ")}）\n`);
     process.exit(2);
   }
 
-  const promptFlag = args.findIndex((a) => a === "-p" || a === "--prompt");
-  const prompt = promptFlag >= 0 ? args[promptFlag + 1] : undefined;
+  const promptFlag = positional.findIndex((a) => a === "-p" || a === "--prompt");
+  const prompt = promptFlag >= 0 ? positional[promptFlag + 1] : undefined;
 
   const agent = await bootstrap({
     workspace: process.cwd(),
@@ -68,7 +69,7 @@ async function main(): Promise<void> {
     version: pkg.version,
     model: agent.model,
     cwd: process.cwd(),
-    approvalMode: "interactive",
+    approvalLabel: "审批:交互",
   });
 }
 

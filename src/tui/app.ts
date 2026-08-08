@@ -15,7 +15,7 @@ import {
 } from "../../vendor/pi-tui/src/index.ts";
 import { TuiApprovalAnswerer } from "./approval/tui-answerer.ts";
 import { builtinCommands } from "./commands/builtins.ts";
-import { FooterComponent, type ApprovalMode } from "./components/chrome/footer.ts";
+import { FooterComponent } from "./components/chrome/footer.ts";
 import { createLoader } from "./components/chrome/loader.ts";
 import { WelcomeComponent } from "./components/chrome/welcome.ts";
 import { AssistantMessageComponent } from "./components/messages/assistant-message.ts";
@@ -33,8 +33,8 @@ export interface TuiAppInfo {
   version: string;
   model: string;
   cwd: string;
-  /** 审批模式（#48 footer 显示；TUI 恒为 interactive，print 无 footer）。 */
-  approvalMode: ApprovalMode;
+  /** 审批模式展示文案（#48 footer；TUI 恒为「审批:交互」，print 无 footer）。 */
+  approvalLabel: string;
 }
 
 export interface TuiApp {
@@ -70,7 +70,7 @@ export function assembleTui(
   tui.addChild(
     new WelcomeComponent({ toolName: info.toolName, version: info.version, model: info.model, cwd: info.cwd }),
   );
-  const footer = new FooterComponent({ model: info.model, cwd: info.cwd, approvalMode: info.approvalMode });
+  const footer = new FooterComponent({ model: info.model, cwd: info.cwd, approvalLabel: info.approvalLabel });
   tui.addChild(chat);
   tui.addChild(loader);
   tui.addChild(footer);
