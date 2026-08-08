@@ -10,6 +10,7 @@ import { Loop } from "./engine/loop.ts";
 import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
 import { ToolExecutor } from "./engine/tools/executor.ts";
+import { registerWebTools } from "./engine/tools/web.ts";
 import { Rebuilder, WireService, type RebuiltMessage } from "./engine/wire.ts";
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
@@ -84,6 +85,8 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     const credentials = await resolveKimiCredentials();
     llm = new KimiLLM(credentials);
     model = credentials.model;
+    // web 工具复用同一份订阅凭证（#3：search/fetch 与 LLM 共用 baseUrl + Bearer）
+    registerWebTools(executor, { apiKey: credentials.apiKey, baseUrl: credentials.baseUrl });
   }
 
   const approvalGate: ApprovalGate | undefined = options.printApproval
