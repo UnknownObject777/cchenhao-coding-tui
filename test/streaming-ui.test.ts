@@ -81,6 +81,30 @@ describe("StreamingUiController", () => {
     await h.render();
     expect(h.viewport()).not.toContain("Thinking");
   });
+
+  it("restarts the loader on the same instance after hide (turn 2)", async () => {
+    const { h, bus } = await mountWithController();
+    bus.emit("turn.started", { turnId: 1, prompt: "one" });
+    await h.render();
+    bus.emit("turn.ended", { turnId: 1, reason: "finish" });
+    await h.render();
+    expect(h.viewport()).not.toContain("Thinking");
+
+    bus.emit("turn.started", { turnId: 2, prompt: "two" });
+    await h.render();
+    expect(h.viewport()).toContain("Thinking");
+  });
+
+  it("marks failed tool results with ✗", async () => {
+    const { h, bus } = await mountWithController();
+    bus.emit("turn.started", { turnId: 1, prompt: "hi" });
+    bus.emit("tool.call", { id: "t1", name: "write_file", args: { path: "a.ts" } });
+    bus.emit("tool.result", { id: "t1", name: "write_file", ok: false, output: "disk full" });
+    await h.render();
+    const vp = h.viewport();
+    expect(vp).toContain("✗");
+    expect(vp).toContain("disk full");
+  });
 });
 
 describe("chrome components", () => {
