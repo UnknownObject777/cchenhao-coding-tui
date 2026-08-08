@@ -18,7 +18,9 @@ export interface KimiLLMDeps {
 
 /** HTTP 状态 → 用户可操作的分类错误（#40）。 */
 export function classifyHttpError(status: number, detail: string): Error {
-  const suffix = detail === "" ? "" : `：${detail.slice(0, 300)}`;
+  // 上游错误体可能回显请求头，先剥 Bearer 再展示（防 token 泄漏）
+  const safeDetail = detail.replace(/Bearer\s+\S+/gi, "Bearer ***").slice(0, 300);
+  const suffix = safeDetail === "" ? "" : `：${safeDetail}`;
   if (status === 401 || status === 403) {
     return new Error(`凭证问题（HTTP ${status}）：请先运行一次 \`kimi\` 刷新登录态，或设置 KIMI_API_KEY${suffix}`);
   }
@@ -28,12 +30,13 @@ export function classifyHttpError(status: number, detail: string): Error {
   if (status >= 500) {
     return new Error(`服务故障（HTTP ${status}）：上游服务暂时不可用，可稍后重试${suffix}`);
   }
-  return new Error(`LLM request failed: HTTP ${status}${suffix}`);
+  return new Error(`LLM 请求失败（HTTP ${status}）${suffix}`);
 }
 
 function isNetworkError(error: unknown): boolean {
-  // undici 的网络失败统一是 TypeError（fetch failed）
-  return error instanceof TypeError;
+  // undici 的网络失败是 TypeError("fetch failed")；配置错误（如非法 baseUrl 的
+  // "Invalid URL" TypeError）不算网络错误，不重试、不误诊
+  return error instanceof TypeError && error.message.includes("fetch failed");
 }
 
 export class KimiLLM implements LLMRequester {
@@ -53,7 +56,6 @@ export class KimiLLM implements LLMRequester {
   private async connect(body: string): Promise<Response> {
     const { apiKey, baseUrl } = this.options;
     const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
-    let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       if (attempt > 0) await this.sleep(500 * 2 ** (attempt - 1));
@@ -68,25 +70,21 @@ export class KimiLLM implements LLMRequester {
           body,
         });
       } catch (error) {
-        if (isNetworkError(error) && attempt < this.maxRetries) {
-          lastError = error as Error;
-          continue;
+        if (isNetworkError(error)) {
+          if (attempt < this.maxRetries) continue;
+          throw new Error(`网络错误：${(error as Error).message}（检查网络/代理；已重试 ${attempt} 次）`);
         }
-        throw isNetworkError(error)
-          ? new Error(`网络错误：${(error as Error).message}（检查网络/代理；已重试 ${attempt} 次）`)
-          : error;
+        throw error;
       }
 
       if (response.ok && response.body) return response;
 
       const detail = await response.text().catch(() => "");
-      if (response.status >= 500 && attempt < this.maxRetries) {
-        lastError = classifyHttpError(response.status, detail);
-        continue;
-      }
+      if (response.status >= 500 && attempt < this.maxRetries) continue;
       throw classifyHttpError(response.status, detail);
     }
-    throw lastError ?? new Error("LLM request failed: retries exhausted");
+    // 循环必从 return/throw 退出（continue 有 attempt 上限守卫）
+    throw new Error("unreachable");
   }
 
   async *request(messages: Message[], tools: ToolSpec[]): AsyncIterable<ModelEvent> {
