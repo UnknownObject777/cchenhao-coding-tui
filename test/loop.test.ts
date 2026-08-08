@@ -21,6 +21,7 @@ function setup(
   bus.on("tool.call", (p) => events.push({ type: "tool.call", ...p }));
   bus.on("tool.result", (p) => events.push({ type: "tool.result", ...p }));
   bus.on("approval.decision", (p) => events.push({ type: "approval.decision", ...p }));
+  bus.on("context.usage", (p) => events.push({ type: "context.usage", ...p }));
   bus.on("turn.ended", (p) => events.push({ type: "turn.ended", ...p }));
 
   const executor = new ToolExecutor();

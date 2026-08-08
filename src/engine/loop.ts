@@ -1,4 +1,11 @@
 import type { ApprovalGate } from "./approval/gate.ts";
+import {
+  CONTEXT_TOKEN_BUDGET,
+  estimateTokens,
+  TRUNCATE_HIGH_WATER,
+  TRUNCATE_LOW_WATER,
+  truncateToWindow,
+} from "./context.ts";
 import type { EventBus, EngineEventName, EngineEvents } from "./events.ts";
 import type { LLMRequester, Message, ToolCall } from "./llm/types.ts";
 import { errorMessage, type ToolExecutor } from "./tools/executor.ts";
@@ -12,6 +19,8 @@ export interface LoopOptions {
   wire?: WireService;
   /** 审批缝（#5）：tool.call 发布后、执行前 await；缺省不审批。 */
   approvalGate?: ApprovalGate;
+  /** 上下文 token 预算（#31）；缺省 256K（kimi-for-coding）。 */
+  contextTokenBudget?: number;
   /** 单个 turn 内 LLM 往返的最大轮数（防 tool call 死循环）。 */
   maxRounds?: number;
 }
@@ -21,7 +30,7 @@ export interface LoopOptions {
  * tool_call 交 executor、结果回灌 → finish 后发 turn.ended。
  */
 export class Loop {
-  private readonly messages: Message[] = [];
+  private messages: Message[] = [];
   private turnCount = 0;
   private wireQueue: Promise<unknown> = Promise.resolve();
 
@@ -82,6 +91,7 @@ export class Loop {
   /** 跑一轮 LLM 往返；返回 true 表示本轮无 tool call、turn 收尾，false 表示还要回灌续轮。 */
   private async runRound(): Promise<boolean> {
     const { llm, executor } = this.options;
+    this.enforceContextWindow();
     let assistantText = "";
     const toolCalls: ToolCall[] = [];
 
@@ -137,6 +147,34 @@ export class Loop {
   private pushToolResult(call: ToolCall, ok: boolean, output: string): void {
     this.publish("tool.result", { id: call.id, name: call.name, ok, output });
     this.messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: output });
+  }
+
+  /** 当前上下文占用（tokens，粗估）。footer 与截断共用同一估算。 */
+  contextUsage(): { estimatedTokens: number; budgetTokens: number } {
+    return {
+      estimatedTokens: estimateTokens(this.messages),
+      budgetTokens: this.options.contextTokenBudget ?? CONTEXT_TOKEN_BUDGET,
+    };
+  }
+
+  /**
+   * 溢出防线（#31，#7 决策）：估算超 80% 先滑动窗口截到 60% 以下；
+   * 截完仍超（单条巨型消息）抛错，由 runTurn 转成 turn.ended(error) 引导 /clear。
+   * 每次 LLM 请求前调用，并顺带发布 context.usage。
+   */
+  private enforceContextWindow(): void {
+    const budget = this.options.contextTokenBudget ?? CONTEXT_TOKEN_BUDGET;
+    let estimated = estimateTokens(this.messages);
+    if (estimated > budget * TRUNCATE_HIGH_WATER) {
+      this.messages = truncateToWindow(this.messages, Math.floor(budget * TRUNCATE_LOW_WATER));
+      estimated = estimateTokens(this.messages);
+      if (estimated > budget * TRUNCATE_HIGH_WATER) {
+        throw new Error(
+          `context overflow: ~${estimated} tokens exceeds budget ${budget} even after truncation; use /clear to start fresh`,
+        );
+      }
+    }
+    this.publish("context.usage", { estimatedTokens: estimated, budgetTokens: budget });
   }
 
   private publish<K extends EngineEventName>(event: K, payload: EngineEvents[K]): void {

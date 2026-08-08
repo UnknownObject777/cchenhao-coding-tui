@@ -12,6 +12,7 @@ import { AssistantMessageComponent } from "../components/messages/assistant-mess
 import { errorLine } from "../components/messages/error-line.ts";
 import { ThinkingComponent } from "../components/messages/thinking.ts";
 import { ToolCallComponent } from "../components/messages/tool-call.ts";
+import { FooterComponent } from "../components/chrome/footer.ts";
 import { ThemedLoader } from "../components/chrome/loader.ts";
 
 export interface StreamingUiDeps {
@@ -19,6 +20,8 @@ export interface StreamingUiDeps {
   /** 消息列表容器（welcome 在上、editor 在下的中间区）。 */
   chat: Container;
   loader: ThemedLoader;
+  /** footer 状态栏（#32：context.usage 驱动占用显示）。 */
+  footer?: FooterComponent;
   requestRender: () => void;
 }
 
@@ -26,6 +29,7 @@ export class StreamingUiController {
   private readonly bus: EventBus;
   private readonly chat: Container;
   private readonly loader: ThemedLoader;
+  private readonly footer: FooterComponent | undefined;
   private readonly requestRender: () => void;
   private readonly unsubscribes: Array<() => void> = [];
 
@@ -41,11 +45,16 @@ export class StreamingUiController {
     this.bus = deps.bus;
     this.chat = deps.chat;
     this.loader = deps.loader;
+    this.footer = deps.footer;
     this.requestRender = deps.requestRender;
   }
 
   start(): void {
     this.unsubscribes.push(
+      this.bus.on("context.usage", ({ estimatedTokens, budgetTokens }) => {
+        this.footer?.setUsage(estimatedTokens, budgetTokens);
+        this.requestRender();
+      }),
       this.bus.on("turn.started", () => {
         this.sealStreamState();
         this.currentThinking = undefined;

@@ -68,9 +68,10 @@ export function assembleTui(
   tui.addChild(
     new WelcomeComponent({ toolName: info.toolName, version: info.version, model: info.model, cwd: info.cwd }),
   );
+  const footer = new FooterComponent({ model: info.model, cwd: info.cwd });
   tui.addChild(chat);
   tui.addChild(loader);
-  tui.addChild(new FooterComponent({ model: info.model, cwd: info.cwd }));
+  tui.addChild(footer);
   tui.addChild(editor);
   tui.setFocus(editor);
 
@@ -93,6 +94,7 @@ export function assembleTui(
     bus: agent.bus,
     chat,
     loader,
+    footer,
     requestRender: () => tui.requestRender(),
   });
   streamingUi.start();

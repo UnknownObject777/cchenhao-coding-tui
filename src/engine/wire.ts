@@ -101,7 +101,8 @@ export class Rebuilder {
         case "assistant.think":
         case "approval.request":
         case "approval.decision":
-          // 思考流与审批留痕不参与消息重建
+        case "context.usage":
+          // 思考流、审批留痕、用量指标不参与消息重建
           break;
       }
     }
@@ -174,6 +175,7 @@ export class Rebuilder {
         case "assistant.think":
         case "approval.request":
         case "approval.decision":
+        case "context.usage":
           break;
       }
     }
