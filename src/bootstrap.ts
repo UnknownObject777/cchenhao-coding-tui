@@ -54,7 +54,13 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   }
 
   const approvalGate: ApprovalGate | undefined = options.printApproval
-    ? createComposedGate({ bus, workspace, answerer: createPrintAnswerer(options.printApproval.yes) })
+    ? createComposedGate({
+        bus,
+        workspace,
+        answerer: createPrintAnswerer(options.printApproval.yes, (message) =>
+          process.stderr.write(`${message}\n`),
+        ),
+      })
     : undefined;
 
   const loop = new Loop({

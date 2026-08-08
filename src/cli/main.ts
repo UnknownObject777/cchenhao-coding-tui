@@ -9,7 +9,7 @@ const USAGE = `mini coding agent
 
 用法:
   agent -p "<prompt>"   一次性执行（print 模式），结果输出到 stdout
-  agent -p --yes "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
+  agent -p --yes|-y "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
   agent                 交互式 TUI
 
 环境变量:

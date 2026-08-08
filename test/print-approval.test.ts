@@ -9,7 +9,7 @@ import { createPrintAnswerer } from "../src/engine/approval/print-answerer.ts";
 
 describe("createPrintAnswerer", () => {
   it("allows with --yes", async () => {
-    const answerer = createPrintAnswerer(true);
+    const answerer = createPrintAnswerer(true, () => {});
     expect(await answerer.ask({ id: "1", name: "write_file", args: { path: "a" } })).toBe("allow");
   });
 
