@@ -10,6 +10,7 @@
     "exactOptionalPropertyTypes": false, // vendor/pi-tui 不满足此 flag（第三方逐字拷贝，ADR-0002 禁止手改），故关闭
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "erasableSyntaxOnly": true,
     "skipLibCheck": true,
     "noEmit": true

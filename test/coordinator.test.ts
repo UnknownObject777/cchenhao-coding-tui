@@ -57,6 +57,7 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
     bus,
     wire,
     workspace: dir,
+    model: "stub-llm",
   } satisfies Agent;
 
   const onExit = vi.fn();

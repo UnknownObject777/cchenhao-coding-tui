@@ -19,6 +19,8 @@ export interface Agent {
   bus: EventBus;
   wire: WireService;
   workspace: string;
+  /** 生效的模型名（fake 模式为 "fake-llm"），供 footer/welcome 展示。 */
+  model: string;
 }
 
 export interface BootstrapOptions {
@@ -35,10 +37,19 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   const executor = new ToolExecutor();
   registerBuiltinTools(executor, workspace);
 
-  const llm: LLMRequester = options.fake ? demoScript() : new KimiLLM(await resolveKimiCredentials());
+  let llm: LLMRequester;
+  let model: string;
+  if (options.fake) {
+    llm = demoScript();
+    model = "fake-llm";
+  } else {
+    const credentials = await resolveKimiCredentials();
+    llm = new KimiLLM(credentials);
+    model = credentials.model;
+  }
 
   const loop = new Loop({ llm, executor, bus, wire, systemPrompt: SYSTEM_PROMPT });
-  return { loop, bus, wire, workspace };
+  return { loop, bus, wire, workspace, model };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

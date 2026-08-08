@@ -1,13 +1,15 @@
 #!/usr/bin/env node
+import pkg from "../../package.json" with { type: "json" };
 import { bootstrap } from "../bootstrap.ts";
 import { errorMessage } from "../engine/tools/executor.ts";
+import { runTui } from "../tui/app.ts";
 import { runPrompt } from "./run-prompt.ts";
 
 const USAGE = `mini coding agent
 
 用法:
   agent -p "<prompt>"   一次性执行（print 模式），结果输出到 stdout
-  agent                 交互式 TUI（尚未实现，见 issue #1 后续 milestone）
+  agent                 交互式 TUI
 
 环境变量:
   KIMI_API_KEY   直接用 API key（不设置则读 kimi-code 订阅的 OAuth 凭证）
@@ -27,16 +29,21 @@ async function main(): Promise<void> {
   const promptFlag = args.findIndex((a) => a === "-p" || a === "--prompt");
   const prompt = promptFlag >= 0 ? args[promptFlag + 1] : undefined;
 
-  if (prompt === undefined) {
-    process.stderr.write("交互式 TUI 尚未实现（后续 milestone）。MVP 请用：agent -p \"<prompt>\"\n");
-    process.exit(2);
-  }
-
   const agent = await bootstrap({
     workspace: process.cwd(),
     fake: process.env["FAKE_LLM"] === "1",
   });
-  process.exit(await runPrompt(agent, prompt));
+
+  if (prompt !== undefined) {
+    process.exit(await runPrompt(agent, prompt));
+  }
+
+  await runTui(agent, {
+    toolName: "mini-agent",
+    version: pkg.version,
+    model: agent.model,
+    cwd: process.cwd(),
+  });
 }
 
 main().catch((error: unknown) => {
