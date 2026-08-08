@@ -34,6 +34,8 @@ export class StreamingUiController {
   private currentAssistant: AssistantMessageComponent | undefined;
   private currentThinking: ThinkingComponent | undefined;
   private readonly pendingTools = new Map<string, ToolCallComponent>();
+  /** 最近的工具帧（#24 ctrl+o 折叠/展开的目标）。 */
+  private lastToolFrame: ToolCallComponent | undefined;
 
   constructor(deps: StreamingUiDeps) {
     this.bus = deps.bus;
@@ -79,6 +81,7 @@ export class StreamingUiController {
         this.sealStreamState();
         const frame = new ToolCallComponent(name, args);
         this.pendingTools.set(id, frame);
+        this.lastToolFrame = frame;
         this.chat.addChild(frame);
         this.requestRender();
       }),
@@ -102,6 +105,14 @@ export class StreamingUiController {
   private sealStreamState(): void {
     this.currentAssistant = undefined;
     this.accumulated = "";
+  }
+
+  /** #24：折叠/展开最近的工具帧。没有可操作的帧时返回 false。 */
+  toggleLastToolFrame(): boolean {
+    if (this.lastToolFrame === undefined) return false;
+    this.lastToolFrame.toggleExpanded();
+    this.requestRender();
+    return true;
   }
 
   stop(): void {

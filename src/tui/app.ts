@@ -9,6 +9,7 @@ import {
   CombinedAutocompleteProvider,
   Container,
   Editor,
+  matchesKey,
   ProcessTerminal,
   TUI,
 } from "../../vendor/pi-tui/src/index.ts";
@@ -19,7 +20,9 @@ import { createLoader } from "./components/chrome/loader.ts";
 import { WelcomeComponent } from "./components/chrome/welcome.ts";
 import { StreamingUiController } from "./controllers/streaming-ui.ts";
 import { TuiCoordinator } from "./coordinator.ts";
+import { detectTerminalTheme } from "./theme/detect.ts";
 import { createEditorTheme } from "./theme/pi-tui-theme.ts";
+import { currentTheme } from "./theme/theme.ts";
 
 export interface TuiAppInfo {
   toolName: string;
@@ -35,6 +38,8 @@ export interface TuiApp {
   coordinator: TuiCoordinator;
   /** 拆审批输入监听（退出时调用）。 */
   detachApproval: () => void;
+  /** 拆 ctrl+o 展开监听（退出时调用）。 */
+  detachExpand: () => void;
 }
 
 export function assembleTui(
@@ -78,10 +83,18 @@ export function assembleTui(
   const detachApproval = answerer.attach();
   agent.loop.setApprovalGate(createComposedGate({ bus: agent.bus, workspace: agent.workspace, answerer }));
 
+  // ctrl+o：折叠/展开最近的工具帧（#24）
+  const detachExpand = tui.addInputListener((data: string): { consume: true } | undefined => {
+    if (matchesKey(data, "ctrl+o") && streamingUi.toggleLastToolFrame()) {
+      return { consume: true };
+    }
+    return undefined;
+  });
+
   const coordinator = new TuiCoordinator({ tui, editor, chat, agent, onExit });
   coordinator.start();
 
-  return { tui, editor, streamingUi, coordinator, detachApproval };
+  return { tui, editor, streamingUi, coordinator, detachApproval, detachExpand };
 }
 
 /** 生产入口：ProcessTerminal + Ctrl+C/退出时恢复 raw mode。 */
@@ -89,10 +102,17 @@ export async function runTui(agent: Agent, info: TuiAppInfo): Promise<void> {
   let app: TuiApp;
   app = assembleTui(new TUI(new ProcessTerminal()), agent, info, () => {
     app.detachApproval();
+    app.detachExpand();
     app.streamingUi.stop();
     app.coordinator.stop();
     app.tui.stop();
     process.exit(0);
   });
   await app.tui.start();
+  // 启动后检测终端背景（#23）：亮背景切亮色 palette，失败安全降级 dark
+  const detected = await detectTerminalTheme(app.tui);
+  if (detected !== currentTheme.current) {
+    currentTheme.setTheme(detected);
+    app.tui.requestRender(true);
+  }
 }

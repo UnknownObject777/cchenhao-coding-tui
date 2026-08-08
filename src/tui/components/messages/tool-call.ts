@@ -1,15 +1,16 @@
 /**
  * 工具调用帧：header（名称 + 关键参数摘要）+ 结果预览（✓/✗ + 前 N 行）。
- * 对齐 kimi-code components/messages/tool-call.ts 的迷你版；
- * 折叠/展开交互属于 #24，这里只有固定预览。
+ * #24：ctrl+o 折叠/展开；展开态也有行数上限防刷屏。
  */
 import { Text, truncateToWidth, visibleWidth, type Component } from "../../../../vendor/pi-tui/src/index.ts";
 import { FAILURE_MARK, MESSAGE_INDENT, STATUS_BULLET, SUCCESS_MARK } from "../../constant/symbols.ts";
 import { hex } from "../../theme/pi-tui-theme.ts";
 import { layOutBlock } from "./block-layout.ts";
 
-/** 结果预览的最大行数（#24 的展开/折叠会接管完整视图）。 */
+/** 折叠态结果预览的最大行数。 */
 const RESULT_PREVIEW_LINES = 5;
+/** 展开态的最大行数（超出显示截断标记；#37 会在执行层做统一字节护栏）。 */
+const EXPANDED_MAX_LINES = 200;
 /** header 参数摘要的最大字符数。 */
 const MAX_ARG_SUMMARY_LENGTH = 60;
 
@@ -30,6 +31,7 @@ export class ToolCallComponent implements Component {
   private readonly name: string;
   private readonly args: Record<string, unknown>;
   private result: ToolResultState | undefined;
+  private expanded = false;
 
   constructor(name: string, args: Record<string, unknown>) {
     this.name = name;
@@ -38,6 +40,13 @@ export class ToolCallComponent implements Component {
 
   setResult(ok: boolean, output: string): void {
     this.result = { ok, output };
+  }
+
+  /** #24：折叠/展开切换。返回切换后状态。 */
+  toggleExpanded(): boolean {
+    this.expanded = !this.expanded;
+    this.invalidate();
+    return this.expanded;
   }
 
   invalidate(): void {}
@@ -67,12 +76,16 @@ export class ToolCallComponent implements Component {
     // 预览行按可用宽度折行（indent + mark 的列宽）
     const contentWidth = Math.max(1, width - visibleWidth(MESSAGE_INDENT + SUCCESS_MARK));
     const outputLines = output.split("\n");
-    const preview = outputLines.slice(0, RESULT_PREVIEW_LINES);
-    const body = new Text(preview.join("\n"), 0, 0).render(contentWidth);
+    const cap = this.expanded ? EXPANDED_MAX_LINES : RESULT_PREVIEW_LINES;
+    const shown = outputLines.slice(0, cap);
+    const body = new Text(shown.join("\n"), 0, 0).render(contentWidth);
     const lines = body.map((line, i) => MESSAGE_INDENT + (i === 0 ? mark : "  ") + line);
-    const remaining = outputLines.length - preview.length;
+    const remaining = outputLines.length - shown.length;
     if (remaining > 0) {
       lines.push(MESSAGE_INDENT + "  " + hex("textMuted")(`… (${remaining} more lines)`));
+    }
+    if (outputLines.length > RESULT_PREVIEW_LINES) {
+      lines.push(MESSAGE_INDENT + "  " + hex("textMuted")(this.expanded ? "ctrl+o 折叠" : "ctrl+o 展开"));
     }
     return lines;
   }
