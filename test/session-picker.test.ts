@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { bootstrap } from "../src/bootstrap.ts";
 import { SessionStore } from "../src/engine/session.ts";
@@ -40,7 +40,7 @@ describe("session picker (#47)", () => {
     const h = createTuiHarness(80, 24);
     await h.tui.start();
 
-    const choicePromise = pickSession(h.tui, sessions);
+    const choicePromise = pickSession(h.tui, sessions, () => {});
     await h.render();
     const vp = h.viewport();
     expect(vp).toContain("选择会话");
@@ -57,13 +57,28 @@ describe("session picker (#47)", () => {
     const h = createTuiHarness(80, 24);
     await h.tui.start();
 
-    let promise = pickSession(h.tui, sessions);
+    let promise = pickSession(h.tui, sessions, () => {});
     h.terminal.sendInput("n");
     expect(await promise).toEqual({ kind: "new" });
 
-    promise = pickSession(h.tui, sessions);
+    promise = pickSession(h.tui, sessions, () => {});
     h.terminal.sendInput("\r");
     expect(await promise).toEqual({ kind: "resume", path: sessions[0]!.path });
+    h.stop();
+  });
+
+  it("ctrl+c during the picker exits instead of being swallowed", async () => {
+    const sessions = await store.list();
+    const h = createTuiHarness(80, 24);
+    await h.tui.start();
+
+    let exited = false;
+    const promise = pickSession(h.tui, sessions, () => {
+      exited = true;
+    });
+    h.terminal.sendInput("");
+    await vi.waitFor(() => expect(exited).toBe(true));
+    void promise; // 选择器未 resolve（退出路径），测试不依赖它
     h.stop();
   });
 

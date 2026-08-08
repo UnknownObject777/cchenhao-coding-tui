@@ -2,7 +2,7 @@
  * 会话选择器（#47）：启动时列出工作区历史会话，数字键选择、
  * Enter 继续最近、n 新建。最小版，类比 kimi-code session-picker。
  */
-import { truncateToWidth, type Component, type TUI } from "../../vendor/pi-tui/src/index.ts";
+import { matchesKey, truncateToWidth, type Component, type TUI } from "../../vendor/pi-tui/src/index.ts";
 import type { SessionInfo } from "../engine/session.ts";
 import { hex } from "./theme/pi-tui-theme.ts";
 
@@ -33,7 +33,7 @@ class SessionPickerComponent implements Component {
 /**
  * 弹出选择器并等待选择。返回用户选择；调用方负责后续装配。
  */
-export function pickSession(tui: TUI, sessions: SessionInfo[]): Promise<SessionChoice> {
+export function pickSession(tui: TUI, sessions: SessionInfo[], onExit: () => void): Promise<SessionChoice> {
   const component = new SessionPickerComponent(sessions);
   tui.addChild(component);
   tui.requestRender(true);
@@ -47,7 +47,13 @@ export function pickSession(tui: TUI, sessions: SessionInfo[]): Promise<SessionC
         resolve(choice);
         return { consume: true };
       };
-      if (data === "\r" || data === "\u{1B}") {
+      // raw mode 下 Ctrl+C 无 SIGINT：选择器激活期间它是唯一的监听者，须自拦退出
+      if (matchesKey(data, "ctrl+c")) {
+        detach();
+        onExit();
+        return { consume: true };
+      }
+      if (data === "\r" || matchesKey(data, "escape")) {
         const latest = sessions[0];
         return done(latest !== undefined ? { kind: "resume", path: latest.path } : { kind: "new" });
       }

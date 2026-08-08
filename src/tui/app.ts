@@ -149,20 +149,31 @@ export async function runTui(options: {
     app.tui.stop();
     process.exit(0);
   };
+  // 装配完成前的退出/失败路径：恢复 raw mode 再退出
+  const earlyExit = (): void => {
+    tui.stop();
+    process.exit(0);
+  };
 
-  // 会话选择（#47）：有历史会话且未 --new 时先问
-  const store = new SessionStore(SessionStore.defaultRoot(), options.workspace);
-  const sessions = options.forceNew ? [] : await store.list();
-  const choice =
-    sessions.length === 0 ? { kind: "new" as const } : await pickSession(tui, sessions);
+  try {
+    // 会话选择（#47）：有历史会话且未 --new 时先问
+    const store = new SessionStore(SessionStore.defaultRoot(), options.workspace);
+    const sessions = options.forceNew ? [] : await store.list();
+    const choice =
+      sessions.length === 0 ? { kind: "new" as const } : await pickSession(tui, sessions, earlyExit);
 
-  const agent = await bootstrap({
-    workspace: options.workspace,
-    fake: options.fake,
-    session: choice.kind === "resume" ? { resume: choice.path } : "new",
-  });
+    const agent = await bootstrap({
+      workspace: options.workspace,
+      fake: options.fake,
+      session: choice.kind === "resume" ? { resume: choice.path } : "new",
+    });
 
-  app = assembleTui(tui, agent, { ...options.info, model: agent.model, cwd: options.workspace }, shutdown);
+    app = assembleTui(tui, agent, { ...options.info, model: agent.model, cwd: options.workspace }, shutdown);
+  } catch (error) {
+    // bootstrap 失败（如无凭证）不能留 raw mode 卡死终端
+    tui.stop();
+    throw error;
+  }
 
   // 启动后检测终端背景（#23）：亮背景切亮色 palette，失败安全降级 dark
   const detected = await detectTerminalTheme(app.tui);
