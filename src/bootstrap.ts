@@ -1,11 +1,11 @@
-import { createComposedGate } from "./engine/approval/composed-gate.ts";
+import { createComposedGate, alwaysMemoryFrom } from "./engine/approval/composed-gate.ts";
 import type { ApprovalGate } from "./engine/approval/gate.ts";
 import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
 import { EventBus } from "./engine/events.ts";
 import { resolveKimiCredentials } from "./engine/llm/credentials.ts";
 import { FakeLLM } from "./engine/llm/fake.ts";
 import { KimiLLM } from "./engine/llm/kimi.ts";
-import type { LLMRequester } from "./engine/llm/types.ts";
+import type { LLMRequester, Message } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
 import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
@@ -28,6 +28,8 @@ export interface Agent {
   sessionPath: string;
   /** 冷重建的历史（UI 展示通道；上下文已进 loop）。新会话为空数组。 */
   history: RebuiltMessage[];
+  /** 从 wire 还原的「始终允许」记忆键（#26 的会话记忆在恢复后延续）。 */
+  approvalMemory: string[];
 }
 
 export interface BootstrapOptions {
@@ -51,20 +53,23 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   const store = new SessionStore(options.sessionRoot ?? SessionStore.defaultRoot(), workspace);
   let sessionPath: string;
   let history: RebuiltMessage[] = [];
-  let contextMessages: ReturnType<Rebuilder["rebuildForContext"]> = [];
+  let contextMessages: Message[] = [];
+  let approvalMemory: string[] = [];
   if (options.session === "continue") {
-    const latest = await store.latest();
+    const latest = await store.latestPath();
     if (latest !== undefined) {
       sessionPath = latest;
       const rows = await new WireService(latest).readAll();
       const rebuilder = new Rebuilder();
       history = rebuilder.rebuild(rows);
       contextMessages = rebuilder.rebuildForContext(rows);
+      approvalMemory = [...alwaysMemoryFrom(rows)];
     } else {
-      sessionPath = store.create();
+      sessionPath = store.createPath();
     }
   } else {
-    sessionPath = store.create();
+    // print 会话进 print/ 子目录，不污染 TUI 的「继续上次」
+    sessionPath = store.createPath(options.printApproval ? "print" : "chat");
   }
   const wire = new WireService(sessionPath);
   const executor = new ToolExecutor();
@@ -102,7 +107,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   if (contextMessages.length > 0) {
     loop.loadHistory(contextMessages);
   }
-  return { loop, bus, wire, workspace, model, sessionPath, history };
+  return { loop, bus, wire, workspace, model, sessionPath, history, approvalMemory };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

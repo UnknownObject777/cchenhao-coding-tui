@@ -9,6 +9,7 @@ import { FakeLLM } from "../src/engine/llm/fake.ts";
 import { Loop } from "../src/engine/loop.ts";
 import { SessionStore, workspaceSlug } from "../src/engine/session.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
+import { alwaysMemoryFrom } from "../src/engine/approval/composed-gate.ts";
 import { Rebuilder, WireService } from "../src/engine/wire.ts";
 import type { EngineEvent } from "../src/engine/events.ts";
 
@@ -31,27 +32,38 @@ describe("SessionStore (#30)", () => {
 
   it("creates session files under a workspace-slug directory", () => {
     const store = new SessionStore(dir, "D:/找工作/my proj");
-    const path = store.create();
+    const path = store.createPath();
     expect(path).toContain(workspaceSlug("D:/找工作/my proj"));
     expect(path).toMatch(/\.jsonl$/);
-    expect(store.create()).not.toBe(path); // 唯一
+    expect(store.createPath()).not.toBe(path); // 唯一
   });
 
   it("latest() returns the newest session file, undefined when empty", async () => {
     const store = new SessionStore(dir, "D:/proj");
-    expect(await store.latest()).toBeUndefined();
+    expect(await store.latestPath()).toBeUndefined();
 
-    const first = store.create();
+    const first = store.createPath();
     await new WireService(first).append({ type: "turn.started", turnId: 1, prompt: "one" });
-    const newest = await store.latest();
+    const newest = await store.latestPath();
     expect(newest).toBe(first);
   });
 
   it("different workspaces get different directories", async () => {
     const a = new SessionStore(dir, "D:/proj-a");
     const b = new SessionStore(dir, "D:/proj-b");
-    await new WireService(a.create()).append({ type: "turn.started", turnId: 1, prompt: "x" });
-    expect(await b.latest()).toBeUndefined(); // 互不串扰
+    await new WireService(a.createPath()).append({ type: "turn.started", turnId: 1, prompt: "x" });
+    expect(await b.latestPath()).toBeUndefined(); // 互不串扰
+  });
+
+  it("slug does not collide on punctuation-only differences or drive letters", () => {
+    expect(workspaceSlug("D:/my proj")).not.toBe(workspaceSlug("D:/my-proj"));
+    expect(workspaceSlug("C:/proj")).not.toBe(workspaceSlug("D:/proj"));
+  });
+
+  it("print sessions are invisible to latest() (continue picks chat sessions only)", async () => {
+    const store = new SessionStore(dir, "D:/proj");
+    await new WireService(store.createPath("print")).append({ type: "turn.started", turnId: 1, prompt: "p" });
+    expect(await store.latestPath()).toBeUndefined();
   });
 });
 
@@ -123,6 +135,44 @@ describe("session resume into context (#29)", () => {
       { role: "assistant", content: "之前的回答" },
       { role: "user", content: "新问题" },
     ]);
+  });
+
+  it("interrupted sessions get synthesized tool replies so pairing stays valid", async () => {
+    const wirePath = join(dir, "interrupted.jsonl");
+    const wire = new WireService(wirePath);
+    // 进程在 tool.result 之前被杀：没有 turn.ended、没有 result
+    await wire.append({ type: "turn.started", turnId: 1, prompt: "干活" });
+    await wire.append({ type: "tool.call", id: "c1", name: "run_command", args: { command: "make" } });
+
+    const messages = new Rebuilder().rebuildForContext(await wire.readAll());
+
+    expect(messages).toEqual([
+      { role: "user", content: "干活" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "run_command", args: { command: "make" } }],
+      },
+      {
+        role: "tool",
+        toolCallId: "c1",
+        name: "run_command",
+        content: "(session interrupted before tool result)",
+      },
+    ]);
+  });
+
+  it("always-memory is restored from wire approval events (#26 on resume)", async () => {
+    const wirePath = join(dir, "mem.jsonl");
+    const wire = new WireService(wirePath);
+    await wire.append({ type: "approval.request", id: "c1", name: "run_command", args: { command: "npm install" }, level: "confirm" });
+    await wire.append({ type: "approval.decision", id: "c1", decision: "always" });
+    await wire.append({ type: "approval.request", id: "c2", name: "run_command", args: { command: "node x.js" }, level: "confirm" });
+    await wire.append({ type: "approval.decision", id: "c2", decision: "allow" });
+
+    const keys = alwaysMemoryFrom(await wire.readAll());
+
+    expect(keys).toEqual(new Set(["run_command:npm install"]));
   });
 
   it("print-style bootstrap (no session flag) starts a fresh session file", async () => {

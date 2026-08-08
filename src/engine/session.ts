@@ -1,14 +1,26 @@
 /**
  * 会话存储（#30，#6 决策）：wire 日志按工作区分目录、按会话分文件。
  * 目录：<root>/<workspace-slug>/<session-id>.jsonl；root 默认 ~/.mini-agent/sessions。
+ * print 模式的会话进 print/ 子目录，不参与「继续上次」（#6：print 是一次性任务）。
  */
+import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** 工作区路径 → 目录名片段（保可读性，只留字母数字与 -._）。 */
+/**
+ * 工作区路径 → 目录名片段：可读前缀 + 全路径短哈希（防 "my proj"/"my-proj"、
+ * C:/x 与 D:/x 这类归一化碰撞共享会话目录）。
+ */
 export function workspaceSlug(workspace: string): string {
-  return workspace.replace(/^[a-zA-Z]:/, "").replace(/[^a-zA-Z0-9-._]+/g, "-").replace(/^-+|-+$/g, "") || "root";
+  const readable =
+    workspace
+      .replace(/^[a-zA-Z]:/, "")
+      .replace(/[^a-zA-Z0-9-._]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "root";
+  const hash = createHash("sha256").update(workspace).digest("hex").slice(0, 8);
+  return `${readable}-${hash}`;
 }
 
 export class SessionStore {
@@ -22,14 +34,14 @@ export class SessionStore {
     return join(homedir(), ".mini-agent", "sessions");
   }
 
-  /** 新会话文件路径（时间戳 + 随机后缀保证唯一）。 */
-  create(): string {
+  /** 新会话文件路径（时间戳 + 随机后缀保证唯一）。print 会话进子目录，latest() 看不到。 */
+  createPath(kind: "chat" | "print" = "chat"): string {
     const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${Math.random().toString(36).slice(2, 8)}`;
-    return join(this.dir, `${id}.jsonl`);
+    return kind === "print" ? join(this.dir, "print", `${id}.jsonl`) : join(this.dir, `${id}.jsonl`);
   }
 
-  /** 最近一个会话文件（按 mtime），没有则 undefined。 */
-  async latest(): Promise<string | undefined> {
+  /** 最近一个 chat 会话文件（按 mtime），没有则 undefined。 */
+  async latestPath(): Promise<string | undefined> {
     let names: string[];
     try {
       names = await readdir(this.dir);
@@ -52,3 +64,4 @@ export class SessionStore {
     return newest;
   }
 }
+

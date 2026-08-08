@@ -97,10 +97,18 @@ export function assembleTui(
   });
   streamingUi.start();
 
-  // 审批（#28）：TUI 应答源 + 规则/记忆组合体，后置注入 loop（应答源依赖组件树）
+  // 审批（#28）：TUI 应答源 + 规则/记忆组合体，后置注入 loop（应答源依赖组件树）；
+  // 恢复会话带上 wire 还原的 always 记忆（#29）
   const answerer = new TuiApprovalAnswerer({ tui, chat });
   const detachApproval = answerer.attach();
-  agent.loop.setApprovalGate(createComposedGate({ bus: agent.bus, workspace: agent.workspace, answerer }));
+  agent.loop.setApprovalGate(
+    createComposedGate({
+      bus: agent.bus,
+      workspace: agent.workspace,
+      answerer,
+      remembered: new Set(agent.approvalMemory),
+    }),
+  );
 
   // ctrl+o：折叠/展开最近的工具帧（#24）
   const detachExpand = tui.addInputListener((data: string): { consume: true } | undefined => {

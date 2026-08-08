@@ -60,6 +60,7 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
     model: "stub-llm",
     sessionPath: join(dir, "wire.jsonl"),
     history: [],
+    approvalMemory: [],
   } satisfies Agent;
 
   const onExit = vi.fn();

@@ -48,6 +48,7 @@ describe("tool frame collapse/expand (#24)", () => {
       model: "fake-llm",
       sessionPath: join(dir, "wire.jsonl"),
       history: [],
+      approvalMemory: [],
     };
 
     const h = createTuiHarness(100, 40);

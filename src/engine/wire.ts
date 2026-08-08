@@ -118,6 +118,10 @@ export class Rebuilder {
     const messages: Message[] = [];
     let assistantText = "";
     let pendingCalls: ToolCall[] = [];
+    // 中断的会话可能留下没有 tool.result 的 tool.call；协议要求配对，缺的结果合成占位
+    const answeredIds = new Set(
+      rows.filter((r) => r.event.type === "tool.result").map((r) => (r.event as { id: string }).id),
+    );
 
     const flushAssistant = () => {
       if (assistantText !== "" || pendingCalls.length > 0) {
@@ -127,6 +131,16 @@ export class Rebuilder {
           ...(pendingCalls.length > 0 ? { toolCalls: pendingCalls } : {}),
         };
         messages.push(message);
+        for (const call of pendingCalls) {
+          if (!answeredIds.has(call.id)) {
+            messages.push({
+              role: "tool",
+              toolCallId: call.id,
+              name: call.name,
+              content: "(session interrupted before tool result)",
+            });
+          }
+        }
         assistantText = "";
         pendingCalls = [];
       }
