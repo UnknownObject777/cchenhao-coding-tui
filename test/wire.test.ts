@@ -81,4 +81,20 @@ describe("wire", () => {
       { role: "assistant", text: "!" },
     ]);
   });
+
+  it("clear removes the log file and restarts seq from 1", async () => {
+    const wire = new WireService(wirePath);
+    for (const event of turn1) await wire.append(event);
+
+    await wire.clear();
+
+    expect(await wire.readAll()).toEqual([]);
+    await wire.append(turn1[0]!);
+    const rows = await wire.readAll();
+    expect(rows.map((r) => r.seq)).toEqual([1]);
+  });
+
+  it("clear on a missing file is a no-op", async () => {
+    await expect(new WireService(wirePath).clear()).resolves.toBeUndefined();
+  });
 });

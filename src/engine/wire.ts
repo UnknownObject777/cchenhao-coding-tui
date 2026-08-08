@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./events.ts";
 
@@ -41,6 +41,12 @@ export class WireService {
       .split("\n")
       .filter((line) => line.trim() !== "")
       .map((line) => JSON.parse(line) as WireRow);
+  }
+
+  /** 删除 wire 日志（/delete 用）；下次 append 重新从 seq 1 开始。 */
+  async clear(): Promise<void> {
+    await rm(this.path, { force: true });
+    this.nextSeq = undefined;
   }
 }
 

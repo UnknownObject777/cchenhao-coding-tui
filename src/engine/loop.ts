@@ -31,6 +31,14 @@ export class Loop {
     }
   }
 
+  /** 清空对话上下文（保留 system prompt），/clear 与 /delete 用。turnCount 不复位。 */
+  reset(): void {
+    this.messages.length = 0;
+    if (this.options.systemPrompt !== "") {
+      this.messages.push({ role: "system", content: this.options.systemPrompt });
+    }
+  }
+
   async runTurn(prompt: string): Promise<void> {
     this.turnCount += 1;
     const turnId = this.turnCount;

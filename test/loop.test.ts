@@ -169,4 +169,21 @@ describe("loop", () => {
     const rows = await new WireService(wirePath).readAll();
     expect(rows.map((r) => r.event)).toEqual(events);
   });
+
+  it("reset clears conversation history but keeps the system prompt", async () => {
+    const { loop, llm } = setup([
+      [{ type: "text", text: "first" }, { type: "finish", reason: "stop" }],
+      [{ type: "text", text: "second" }, { type: "finish", reason: "stop" }],
+    ]);
+
+    await loop.runTurn("turn one");
+    loop.reset();
+    await loop.runTurn("turn two");
+
+    const secondRequest = llm.requests[1];
+    expect(secondRequest).toEqual([
+      { role: "system", content: "you are a toy" },
+      { role: "user", content: "turn two" },
+    ]);
+  });
 });
