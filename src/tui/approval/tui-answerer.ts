@@ -29,10 +29,10 @@ export class TuiApprovalAnswerer implements ApprovalAnswerer {
     this.timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
-  /** 挂到 TUI 输入流：有待答审批时 y/n/a/esc 优先于 editor 被消费。 */
-  attach(): void {
+  /** 挂到 TUI 输入流：有待答审批时 y/n/a/esc 优先于 editor 被消费。返回退订函数。 */
+  attach(): () => void {
     // InputListener 类型未从 pi-tui 导出，显式标注参数与返回形状
-    this.tui.addInputListener((data: string): { consume: true } | undefined => {
+    return this.tui.addInputListener((data: string): { consume: true } | undefined => {
       if (this.pending === undefined) return undefined;
       const decision = this.mapKey(data);
       if (decision === undefined) return undefined;
@@ -47,7 +47,9 @@ export class TuiApprovalAnswerer implements ApprovalAnswerer {
     this.tui.requestRender();
 
     return new Promise<ApprovalDecision>((resolve) => {
+      // loop 串行执行 tool call，pending 最多一个在飞（覆盖只会在未来并发形态下发生）
       const timeout = setTimeout(() => this.answer("deny"), this.timeoutMs);
+      timeout.unref(); // 未答的审批不该拖住进程退出
       this.pending = { frame, resolve, timeout };
     });
   }

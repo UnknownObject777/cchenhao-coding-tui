@@ -31,6 +31,8 @@ export interface TuiApp {
   editor: Editor;
   streamingUi: StreamingUiController;
   coordinator: TuiCoordinator;
+  /** 拆审批输入监听（退出时调用）。 */
+  detachApproval: () => void;
 }
 
 export function assembleTui(
@@ -64,19 +66,20 @@ export function assembleTui(
 
   // 审批（#28）：TUI 应答源 + 规则/记忆组合体，后置注入 loop（应答源依赖组件树）
   const answerer = new TuiApprovalAnswerer({ tui, chat });
-  answerer.attach();
+  const detachApproval = answerer.attach();
   agent.loop.setApprovalGate(createComposedGate({ bus: agent.bus, workspace: agent.workspace, answerer }));
 
   const coordinator = new TuiCoordinator({ tui, editor, chat, agent, onExit });
   coordinator.start();
 
-  return { tui, editor, streamingUi, coordinator };
+  return { tui, editor, streamingUi, coordinator, detachApproval };
 }
 
 /** 生产入口：ProcessTerminal + Ctrl+C/退出时恢复 raw mode。 */
 export async function runTui(agent: Agent, info: TuiAppInfo): Promise<void> {
   let app: TuiApp;
   app = assembleTui(new TUI(new ProcessTerminal()), agent, info, () => {
+    app.detachApproval();
     app.streamingUi.stop();
     app.coordinator.stop();
     app.tui.stop();
