@@ -10,6 +10,19 @@ export const TOOL_OUTPUT_MAX_LINES = 2000;
 
 export const TRUNCATED_MARKER = "[...truncated]";
 
+/** 按 UTF-8 字节截断（码点安全），超限加 [...truncated] 标记。 */
+export function truncateBytes(text: string, maxBytes: number): string {
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+  let bytes = 0;
+  let end = 0;
+  for (const char of text) {
+    bytes += Buffer.byteLength(char, "utf8");
+    if (bytes > maxBytes) break;
+    end += char.length;
+  }
+  return text.slice(0, end) + `\n${TRUNCATED_MARKER} (byte limit)`;
+}
+
 export function truncateToolOutput(output: string): string {
   let result = output;
 
@@ -18,17 +31,5 @@ export function truncateToolOutput(output: string): string {
     result = lines.slice(0, TOOL_OUTPUT_MAX_LINES).join("\n") + `\n${TRUNCATED_MARKER} (${lines.length - TOOL_OUTPUT_MAX_LINES} more lines)`;
   }
 
-  // 真字节阈值：按码点累计 UTF-8 字节数，到限即停（不劈字符）
-  if (Buffer.byteLength(result, "utf8") > TOOL_OUTPUT_MAX_BYTES) {
-    let bytes = 0;
-    let end = 0;
-    for (const char of result) {
-      bytes += Buffer.byteLength(char, "utf8");
-      if (bytes > TOOL_OUTPUT_MAX_BYTES) break;
-      end += char.length;
-    }
-    result = result.slice(0, end) + `\n${TRUNCATED_MARKER} (byte limit)`;
-  }
-
-  return result;
+  return truncateBytes(result, TOOL_OUTPUT_MAX_BYTES);
 }

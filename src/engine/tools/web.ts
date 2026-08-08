@@ -4,6 +4,7 @@
  * 401/402/403 归类认证/额度错误，不重试（玩具不做 OAuth 自动刷新）。
  */
 import type { ToolExecutor } from "./executor.ts";
+import { TOOL_OUTPUT_MAX_BYTES, truncateBytes } from "./truncate.ts";
 
 export interface WebToolsOptions {
   apiKey: string;
@@ -17,8 +18,6 @@ export interface WebToolsOptions {
 
 const SEARCH_TIMEOUT_MS = 15_000;
 const FETCH_TIMEOUT_MS = 30_000;
-/** fetch 输出硬上限（#3 建议）；executor 的 50KB 护栏仍在外层兜底。 */
-const FETCH_MAX_CHARS = 50 * 1024;
 
 interface SearchResultItem {
   title?: string;
@@ -55,6 +54,18 @@ export function registerWebTools(executor: ToolExecutor, options: WebToolsOption
   const searchTimeout = options.timeouts?.searchMs ?? SEARCH_TIMEOUT_MS;
   const fetchTimeout = options.timeouts?.fetchMs ?? FETCH_TIMEOUT_MS;
 
+  const postJson = (endpoint: string, body: unknown, timeoutMs: number, extraHeaders: Record<string, string> = {}) =>
+    doFetch(`${options.baseUrl}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.apiKey}`,
+        ...extraHeaders,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
   executor.register({
     name: "web_search",
     description:
@@ -65,15 +76,7 @@ export function registerWebTools(executor: ToolExecutor, options: WebToolsOption
       required: ["text_query"],
     },
     execute: async (args) => {
-      const response = await doFetch(`${options.baseUrl}/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${options.apiKey}`,
-        },
-        body: JSON.stringify({ text_query: String(args["text_query"]) }),
-        signal: AbortSignal.timeout(searchTimeout),
-      });
+      const response = await postJson("/search", { text_query: String(args["text_query"]) }, searchTimeout);
       if (!response.ok) throw await errorFromResponse(response);
 
       const data = (await response.json()) as { search_results?: SearchResultItem[] };
@@ -105,20 +108,11 @@ export function registerWebTools(executor: ToolExecutor, options: WebToolsOption
       if (!/^https?:\/\/.+/.test(url)) {
         throw new Error(`invalid url (only http/https supported): ${url}`);
       }
-      const response = await doFetch(`${options.baseUrl}/fetch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/markdown",
-          Authorization: `Bearer ${options.apiKey}`,
-        },
-        body: JSON.stringify({ url }),
-        signal: AbortSignal.timeout(fetchTimeout),
-      });
+      const response = await postJson("/fetch", { url }, fetchTimeout, { Accept: "text/markdown" });
       if (!response.ok) throw await errorFromResponse(response);
 
-      const text = await response.text();
-      return text.length > FETCH_MAX_CHARS ? text.slice(0, FETCH_MAX_CHARS) + "\n[...truncated]" : text;
+      // 内存护栏按真字节截断（#36 的 50KB）；外层 executor 护栏仍兜底
+      return truncateBytes(await response.text(), TOOL_OUTPUT_MAX_BYTES);
     },
   });
 }
