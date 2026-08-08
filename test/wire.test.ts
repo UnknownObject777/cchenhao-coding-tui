@@ -50,6 +50,20 @@ describe("wire", () => {
     expect(rows[1]!.event).toEqual(turn1[5]);
   });
 
+  it("derives the next seq from the max existing seq, not the line count", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      wirePath,
+      '{"seq":5,"event":{"type":"turn.ended","turnId":1,"reason":"finish"}}\n' +
+        '{"seq":7,"event":{"type":"turn.ended","turnId":2,"reason":"finish"}}\n',
+    );
+
+    const wire = new WireService(wirePath);
+    const row = await wire.append(turn1[0]!);
+
+    expect(row.seq).toBe(8);
+  });
+
   it("reads an empty log as no events", async () => {
     expect(await new WireService(wirePath).readAll()).toEqual([]);
   });

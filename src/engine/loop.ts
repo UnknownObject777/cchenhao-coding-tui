@@ -58,7 +58,7 @@ export class Loop {
     await this.wireQueue;
   }
 
-  /** 跑一轮 LLM 往返；返回 true 表示 turn 结束（stop），false 表示还要回灌续轮。 */
+  /** 跑一轮 LLM 往返；返回 true 表示本轮无 tool call、turn 收尾，false 表示还要回灌续轮。 */
   private async runRound(): Promise<boolean> {
     const { llm, executor } = this.options;
     let assistantText = "";

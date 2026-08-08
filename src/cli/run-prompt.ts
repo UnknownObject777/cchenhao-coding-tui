@@ -11,7 +11,7 @@ export async function runPrompt(agent: Agent, prompt: string): Promise<number> {
   // 冷重建：从 wire.jsonl 恢复历史（print 模式下只是提示，不进上下文）。
   const history = new Rebuilder().rebuild(await agent.wire.readAll());
   if (history.length > 0) {
-    process.stderr.write(`[wire] 从 wire.jsonl 冷重建了 ${history.length} 条历史消息\n`);
+    process.stderr.write(`[wire] wire.jsonl 中有 ${history.length} 条历史消息（print 模式不回放进上下文）\n`);
   }
 
   bus.on("assistant.delta", ({ text }) => process.stdout.write(text));
