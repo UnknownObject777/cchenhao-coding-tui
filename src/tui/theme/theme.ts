@@ -1,18 +1,29 @@
-import { darkColors, type ColorPalette } from "./colors.ts";
+import { paletteFor, type ColorPalette, type ResolvedTheme } from "./colors.ts";
 
 /**
  * 主题单例：组件经 currentTheme.color(token) 取色。
- * 玩具版只有暗色 palette；#23 会加亮色 palette 与启动时终端背景检测，
- * 届时这里换成可切换的 holder（组件仍只认 currentTheme，不换引用）。
+ * #23 起为可切换 holder——启动时终端背景检测后 setTheme()，
+ * 组件渲染时才读色，切换即时生效（同 kimi-code currentTheme 模式）。
  */
 export interface Theme {
   color(token: keyof ColorPalette): string;
+  setTheme(theme: ResolvedTheme): void;
+  readonly current: ResolvedTheme;
 }
 
-function createTheme(palette: ColorPalette): Theme {
+function createTheme(initial: ResolvedTheme): Theme {
+  let palette: ColorPalette = paletteFor(initial);
+  let current: ResolvedTheme = initial;
   return {
     color: (token) => palette[token],
+    setTheme: (theme) => {
+      current = theme;
+      palette = paletteFor(theme);
+    },
+    get current() {
+      return current;
+    },
   };
 }
 
-export const currentTheme: Theme = createTheme(darkColors);
+export const currentTheme: Theme = createTheme("dark");

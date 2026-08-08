@@ -55,3 +55,29 @@ export const darkColors: ColorPalette = {
 
   roleUser: "#FFCB6B",
 };
+
+/** 亮色调色板（#23）：文本 token 对 #FFFFFF 对比度 ≥ 4.5:1（沿 kimi-code 的 WCAG AA 取值）。 */
+export const lightColors: ColorPalette = {
+  primary: "#1565C0",
+  accent: "#00838F",
+
+  text: "#1A1A1A",
+  textStrong: "#1A1A1A",
+  textDim: "#454545",
+  textMuted: "#5F5F5F",
+
+  border: "#737373",
+  borderFocus: "#92660A",
+
+  success: "#0E7A38",
+  warning: "#92660A",
+  error: "#B91C1C",
+
+  roleUser: "#9A4A00",
+};
+
+export type ResolvedTheme = "dark" | "light";
+
+export function paletteFor(theme: ResolvedTheme): ColorPalette {
+  return theme === "dark" ? darkColors : lightColors;
+}
