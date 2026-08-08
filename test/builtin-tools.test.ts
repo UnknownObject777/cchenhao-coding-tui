@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerBuiltinTools } from "../src/engine/tools/builtins.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
@@ -10,7 +10,7 @@ describe("builtin tools", () => {
   let executor: ToolExecutor;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "tools-test-"));
+    dir = makeTempDir("tools-test-");
     executor = new ToolExecutor();
     registerBuiltinTools(executor, dir);
   });

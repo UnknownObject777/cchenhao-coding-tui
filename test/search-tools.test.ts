@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
@@ -49,7 +49,7 @@ describe("search tools (#33, #34)", () => {
   let executor: ToolExecutor;
 
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), "search-tools-"));
+    dir = makeTempDir("search-tools-");
     await mkdir(join(dir, "src/nested"), { recursive: true });
     await mkdir(join(dir, "node_modules/pkg"), { recursive: true });
     await writeFile(join(dir, "src/a.ts"), "export const apple = 1;\nexport const banana = 2;\n");

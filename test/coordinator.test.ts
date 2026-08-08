@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Agent } from "../src/bootstrap.ts";
@@ -40,7 +40,7 @@ interface CoordinatorFixture {
 }
 
 async function setupCoordinator(): Promise<CoordinatorFixture> {
-  const dir = mkdtempSync(join(tmpdir(), "coordinator-test-"));
+  const dir = makeTempDir("coordinator-test-");
   const h = createTuiHarness(80, 24);
   const bus = new EventBus();
   const chat = new Container();

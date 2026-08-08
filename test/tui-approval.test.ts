@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { bootstrap } from "../src/bootstrap.ts";
@@ -15,7 +15,7 @@ describe("TUI approval flow", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "tui-approval-"));
+    dir = makeTempDir("tui-approval-");
   });
 
   afterEach(() => {

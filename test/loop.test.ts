@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EventBus, type EngineEvent } from "../src/engine/events.ts";
 import type { ApprovalGate } from "../src/engine/approval/gate.ts";
@@ -48,7 +48,7 @@ describe("loop", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "loop-test-"));
+    dir = makeTempDir("loop-test-");
   });
 
   afterEach(() => {

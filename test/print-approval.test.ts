@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { bootstrap } from "../src/bootstrap.ts";
@@ -27,7 +27,7 @@ describe("print-mode approval through bootstrap (#27)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "print-approval-"));
+    dir = makeTempDir("print-approval-");
   });
 
   afterEach(() => {

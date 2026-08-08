@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Agent } from "../src/bootstrap.ts";
@@ -15,13 +15,14 @@ import { createTuiHarness } from "./helpers/tui-harness.ts";
 
 /** #24：工具帧默认折叠摘要、ctrl+o 展开全文、超长输出截断显示。 */
 
-const LONG_OUTPUT_COMMAND = "node -p Array(50).fill(0).map(function(_,i){return(i+100)}).join(String.fromCharCode(10))"; // 无引号无 > 无空格（cmd /c 会吃掉）
+// 50 行内容经 write_file + read_file 产出（不走 shell——cmd/sh 的引号与括号语义不通用）
+const LONG_TEXT = Array.from({ length: 50 }, (_, i) => `line${i + 100}`).join("\n");
 
 describe("tool frame collapse/expand (#24)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "tool-frame-"));
+    dir = makeTempDir("tool-frame-");
   });
 
   afterEach(() => {
@@ -34,7 +35,11 @@ describe("tool frame collapse/expand (#24)", () => {
     registerBuiltinTools(executor, dir);
     const llm = new FakeLLM([
       [
-        { type: "tool_call", id: "c1", name: "run_command", args: { command: LONG_OUTPUT_COMMAND } },
+        { type: "tool_call", id: "c1", name: "write_file", args: { path: "big.txt", content: LONG_TEXT } },
+        { type: "finish", reason: "tool_calls" },
+      ],
+      [
+        { type: "tool_call", id: "c2", name: "read_file", args: { path: "big.txt" } },
         { type: "finish", reason: "tool_calls" },
       ],
       [{ type: "text", text: "跑完了" }, { type: "finish", reason: "stop" }],

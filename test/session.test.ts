@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { bootstrap } from "../src/bootstrap.ts";
@@ -23,7 +23,7 @@ describe("SessionStore (#30)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "session-test-"));
+    dir = makeTempDir("session-test-");
   });
 
   afterEach(() => {
@@ -71,7 +71,7 @@ describe("session resume into context (#29)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "resume-test-"));
+    dir = makeTempDir("resume-test-");
   });
 
   afterEach(() => {

@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { bootstrap } from "../src/bootstrap.ts";
@@ -12,8 +12,8 @@ describe("loadEffectiveConfig (#38)", () => {
   let ws: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), "cfg-home-"));
-    ws = mkdtempSync(join(tmpdir(), "cfg-ws-"));
+    home = makeTempDir("cfg-home-");
+    ws = makeTempDir("cfg-ws-");
   });
 
   afterEach(() => {
@@ -74,8 +74,8 @@ describe("system prompt override (#39)", () => {
   let home: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "prompt-ws-"));
-    home = mkdtempSync(join(tmpdir(), "prompt-home-"));
+    dir = makeTempDir("prompt-ws-");
+    home = makeTempDir("prompt-home-");
   });
 
   afterEach(() => {

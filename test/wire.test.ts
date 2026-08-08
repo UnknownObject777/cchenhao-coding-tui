@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EngineEvent } from "../src/engine/events.ts";
 import { Rebuilder, WireService } from "../src/engine/wire.ts";
@@ -20,7 +20,7 @@ describe("wire", () => {
   let wirePath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "wire-test-"));
+    dir = makeTempDir("wire-test-");
     wirePath = join(dir, "wire.jsonl");
   });
 

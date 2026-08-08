@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { bootstrap } from "../src/bootstrap.ts";
@@ -13,7 +13,7 @@ describe("editor interactions", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "editor-test-"));
+    dir = makeTempDir("editor-test-");
   });
 
   afterEach(() => {
