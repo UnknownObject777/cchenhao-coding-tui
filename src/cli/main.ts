@@ -9,6 +9,7 @@ const USAGE = `mini coding agent
 
 用法:
   agent -p "<prompt>"   一次性执行（print 模式），结果输出到 stdout
+  agent -p --yes "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
   agent                 交互式 TUI
 
 环境变量:
@@ -28,10 +29,13 @@ async function main(): Promise<void> {
 
   const promptFlag = args.findIndex((a) => a === "-p" || a === "--prompt");
   const prompt = promptFlag >= 0 ? args[promptFlag + 1] : undefined;
+  const yes = args.includes("--yes") || args.includes("-y");
 
   const agent = await bootstrap({
     workspace: process.cwd(),
     fake: process.env["FAKE_LLM"] === "1",
+    // print 模式无人可问：装配 --yes 审批策略（#27）；TUI 模式的交互审批归 #28
+    ...(prompt !== undefined ? { printApproval: { yes } } : {}),
   });
 
   if (prompt !== undefined) {

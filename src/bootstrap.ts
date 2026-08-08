@@ -1,4 +1,7 @@
 import { join } from "node:path";
+import { createComposedGate } from "./engine/approval/composed-gate.ts";
+import type { ApprovalGate } from "./engine/approval/gate.ts";
+import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
 import { EventBus } from "./engine/events.ts";
 import { resolveKimiCredentials } from "./engine/llm/credentials.ts";
 import { FakeLLM } from "./engine/llm/fake.ts";
@@ -27,6 +30,8 @@ export interface BootstrapOptions {
   workspace: string;
   /** FAKE_LLM=1 时用预置脚本演示，无需任何凭证。 */
   fake?: boolean;
+  /** print 模式审批策略（#27）：给了才装配审批 gate；TUI 模式由 #28 装配自己的 gate。 */
+  printApproval?: { yes: boolean };
 }
 
 /** 组合根：显式装配 Engine 各部件。 */
@@ -48,7 +53,18 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     model = credentials.model;
   }
 
-  const loop = new Loop({ llm, executor, bus, wire, systemPrompt: SYSTEM_PROMPT });
+  const approvalGate: ApprovalGate | undefined = options.printApproval
+    ? createComposedGate({ bus, workspace, answerer: createPrintAnswerer(options.printApproval.yes) })
+    : undefined;
+
+  const loop = new Loop({
+    llm,
+    executor,
+    bus,
+    wire,
+    systemPrompt: SYSTEM_PROMPT,
+    ...(approvalGate ? { approvalGate } : {}),
+  });
   return { loop, bus, wire, workspace, model };
 }
 
