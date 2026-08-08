@@ -7,12 +7,11 @@
  * 只依赖 EventBus 契约与 pi-tui 组件，不碰引擎内部（ADR-0001）。
  */
 import type { EventBus } from "../../engine/events.ts";
-import { Text, type Container } from "../../../vendor/pi-tui/src/index.ts";
+import { type Container } from "../../../vendor/pi-tui/src/index.ts";
 import { AssistantMessageComponent } from "../components/messages/assistant-message.ts";
+import { errorLine } from "../components/messages/error-line.ts";
 import { ToolCallComponent } from "../components/messages/tool-call.ts";
 import { ThemedLoader } from "../components/chrome/loader.ts";
-import { FAILURE_MARK } from "../constant/symbols.ts";
-import { hex } from "../theme/pi-tui-theme.ts";
 
 export interface StreamingUiDeps {
   bus: EventBus;
@@ -79,7 +78,7 @@ export class StreamingUiController {
         this.currentAssistant = undefined;
         this.accumulated = "";
         if (reason === "error" && error !== undefined) {
-          this.chat.addChild(new Text(hex("error")(FAILURE_MARK + error), 0, 0));
+          this.chat.addChild(errorLine(error));
         }
         this.requestRender();
       }),

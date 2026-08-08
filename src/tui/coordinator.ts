@@ -1,12 +1,11 @@
 /**
  * 协调器（类比 kimi-code 的 kimi-tui.ts，薄）：
- * 输入路由（slash 命令 or 引擎 turn）、turn 期间禁止重复提交、Ctrl+C 干净退出。
- * 装配（组件上树、事件订阅）在 bootstrap 侧，这里只拿现成的部件。
+ * 输入路由（slash 命令 or 引擎 turn）、turn 期间禁止提交、Ctrl+C 拦截转 onExit。
+ * 组件上树的装配在 #18 的 bootstrap；editor.onSubmit 与 bus 订阅由本类的 start() 接线。
  */
 import type { Agent } from "../bootstrap.ts";
 import {
   matchesKey,
-  Text,
   type Container,
   type Editor,
   type TUI,
@@ -14,8 +13,8 @@ import {
 import { builtinCommands } from "./commands/builtins.ts";
 import { parseSlashCommand } from "./commands/parse.ts";
 import type { SlashCommandContext, SlashCommandDefinition } from "./commands/types.ts";
+import { errorLine } from "./components/messages/error-line.ts";
 import { UserMessageComponent } from "./components/messages/user-message.ts";
-import { hex } from "./theme/pi-tui-theme.ts";
 
 export interface CoordinatorDeps {
   tui: TUI;
@@ -68,12 +67,15 @@ export class TuiCoordinator {
 
   /** 测试与 editor.onSubmit 共用的入口。 */
   async handleSubmit(text: string): Promise<void> {
+    // turn 进行中一切提交都忽略（含 slash）：/clear /delete 会清 transcript/wire，
+    // 与流式更新和 append 队列竞争
+    if (this.busy) return;
+
     const parsed = parseSlashCommand(text);
     if (parsed !== undefined) {
       await this.executeSlash(parsed.name);
       return;
     }
-    if (this.busy) return;
 
     this.setBusy(true);
     this.deps.chat.addChild(new UserMessageComponent(text));
@@ -89,7 +91,7 @@ export class TuiCoordinator {
   private async executeSlash(name: string): Promise<void> {
     const command = this.commands.find((c) => c.name === name);
     if (command === undefined) {
-      this.deps.chat.addChild(new Text(hex("error")(`unknown command: /${name}`), 0, 0));
+      this.deps.chat.addChild(errorLine(`unknown command: /${name}`));
       this.deps.tui.requestRender();
       return;
     }
@@ -98,14 +100,14 @@ export class TuiCoordinator {
   }
 
   private commandContext(): SlashCommandContext {
+    const clearConversation = () => {
+      this.deps.chat.clear();
+      this.deps.agent.loop.reset();
+    };
     return {
-      clearConversation: () => {
-        this.deps.chat.clear();
-        this.deps.agent.loop.reset();
-      },
+      clearConversation,
       deleteSession: async () => {
-        this.deps.chat.clear();
-        this.deps.agent.loop.reset();
+        clearConversation();
         await this.deps.agent.wire.clear();
       },
     };

@@ -140,6 +140,21 @@ describe("TuiCoordinator", () => {
     expect(fixture.editor.disableSubmit).toBe(false);
   });
 
+  it("ignores slash commands while a turn is in flight", async () => {
+    fixture.runTurn.mockImplementation(
+      () =>
+        new Promise<void>(() => {
+          // 永不 resolve：turn 一直在飞
+        }),
+    );
+    void fixture.coordinator.handleSubmit("跑个长任务");
+    await vi.waitFor(() => expect(fixture.runTurn).toHaveBeenCalledTimes(1));
+
+    await fixture.coordinator.handleSubmit("/clear");
+
+    expect(fixture.loopReset).not.toHaveBeenCalled();
+  });
+
   it("Ctrl+C triggers onExit", async () => {
     fixture.h.terminal.sendInput("\x03");
     await fixture.h.render();
