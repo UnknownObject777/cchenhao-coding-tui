@@ -3,8 +3,10 @@
  * assembleTui 与终端类型解耦——生产用 ProcessTerminal，测试用 VirtualTerminal。
  * 布局顺序 = addChild 顺序：welcome → chat（消息流）→ loader → footer → editor。
  */
-import type { Agent } from "../bootstrap.ts";
+import { bootstrap, type Agent } from "../bootstrap.ts";
 import { createComposedGate } from "../engine/approval/composed-gate.ts";
+import { SessionStore } from "../engine/session.ts";
+import { pickSession } from "./session-picker.ts";
 import {
   CombinedAutocompleteProvider,
   Container,
@@ -128,18 +130,40 @@ export function assembleTui(
   return { tui, editor, streamingUi, coordinator, detachApproval, detachExpand };
 }
 
-/** 生产入口：ProcessTerminal + Ctrl+C/退出时恢复 raw mode。 */
-export async function runTui(agent: Agent, info: TuiAppInfo): Promise<void> {
+/** 生产入口：ProcessTerminal + 会话选择器（#47）+ Ctrl+C/退出时恢复 raw mode。 */
+export async function runTui(options: {
+  workspace: string;
+  fake: boolean;
+  forceNew: boolean;
+  info: Omit<TuiAppInfo, "model" | "cwd">;
+}): Promise<void> {
+  const tui = new TUI(new ProcessTerminal());
+  await tui.start();
+
   let app: TuiApp;
-  app = assembleTui(new TUI(new ProcessTerminal()), agent, info, () => {
+  const shutdown = (): void => {
     app.detachApproval();
     app.detachExpand();
     app.streamingUi.stop();
     app.coordinator.stop();
     app.tui.stop();
     process.exit(0);
+  };
+
+  // 会话选择（#47）：有历史会话且未 --new 时先问
+  const store = new SessionStore(SessionStore.defaultRoot(), options.workspace);
+  const sessions = options.forceNew ? [] : await store.list();
+  const choice =
+    sessions.length === 0 ? { kind: "new" as const } : await pickSession(tui, sessions);
+
+  const agent = await bootstrap({
+    workspace: options.workspace,
+    fake: options.fake,
+    session: choice.kind === "resume" ? { resume: choice.path } : "new",
   });
-  await app.tui.start();
+
+  app = assembleTui(tui, agent, { ...options.info, model: agent.model, cwd: options.workspace }, shutdown);
+
   // 启动后检测终端背景（#23）：亮背景切亮色 palette，失败安全降级 dark
   const detected = await detectTerminalTheme(app.tui);
   if (detected !== currentTheme.current) {

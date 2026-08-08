@@ -52,24 +52,26 @@ async function main(): Promise<void> {
   const promptFlag = positional.findIndex((a) => a === "-p" || a === "--prompt");
   const prompt = promptFlag >= 0 ? positional[promptFlag + 1] : undefined;
 
-  const agent = await bootstrap({
-    workspace: process.cwd(),
-    fake: process.env["FAKE_LLM"] === "1",
-    // print 模式无人可问：装配 --yes 审批策略（#27）；TUI 模式的交互审批归 #28
-    ...(prompt !== undefined ? { printApproval: { yes } } : {}),
-    ...(prompt === undefined && !newSession ? { session: "continue" as const } : {}),
-  });
-
   if (prompt !== undefined) {
+    const agent = await bootstrap({
+      workspace: process.cwd(),
+      fake: process.env["FAKE_LLM"] === "1",
+      // print 模式无人可问：装配 --yes 审批策略（#27）；TUI 模式的交互审批归 #28
+      printApproval: { yes },
+    });
     process.exit(await runPrompt(agent, prompt, { ...(outputFormat !== undefined ? { outputFormat } : {}) }));
   }
 
-  await runTui(agent, {
-    toolName: "mini-agent",
-    version: pkg.version,
-    model: agent.model,
-    cwd: process.cwd(),
-    approvalLabel: "审批:交互",
+  // TUI：会话选择器在 runTui 内（选完才 bootstrap）
+  await runTui({
+    workspace: process.cwd(),
+    fake: process.env["FAKE_LLM"] === "1",
+    forceNew: newSession,
+    info: {
+      toolName: "mini-agent",
+      version: pkg.version,
+      approvalLabel: "审批:交互",
+    },
   });
 }
 

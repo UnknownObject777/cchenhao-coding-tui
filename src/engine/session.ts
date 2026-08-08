@@ -4,7 +4,7 @@
  * print 模式的会话进 print/ 子目录，不参与「继续上次」（#6：print 是一次性任务）。
  */
 import { createHash } from "node:crypto";
-import { readdir, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -42,26 +42,60 @@ export class SessionStore {
 
   /** 最近一个 chat 会话文件（按 mtime），没有则 undefined。 */
   async latestPath(): Promise<string | undefined> {
+    const sessions = await this.list();
+    return sessions[0]?.path;
+  }
+
+  /** 全部 chat 会话（新→旧），带首轮 prompt 摘要（#47 会话选择器用）。 */
+  async list(): Promise<SessionInfo[]> {
     let names: string[];
     try {
       names = await readdir(this.dir);
     } catch {
-      return undefined;
+      return [];
     }
     const files = names.filter((n) => n.endsWith(".jsonl"));
-    if (files.length === 0) return undefined;
-
-    let newest: string | undefined;
-    let newestMtime = -1;
+    const sessions: SessionInfo[] = [];
     for (const name of files) {
       const full = join(this.dir, name);
       const { mtimeMs } = await stat(full);
-      if (mtimeMs > newestMtime) {
-        newestMtime = mtimeMs;
-        newest = full;
-      }
+      sessions.push({ path: full, mtimeMs, summary: await readFirstPrompt(full) });
     }
-    return newest;
+    return sessions.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  }
+}
+
+export interface SessionInfo {
+  path: string;
+  mtimeMs: number;
+  /** 首个 turn.started 的 prompt（读不到则空串）。 */
+  summary: string;
+}
+
+/** 只读文件头部找第一条 turn.started（会话可能很大，不全读）。 */
+async function readFirstPrompt(path: string): Promise<string> {
+  try {
+    const handle = await open(path, "r");
+    try {
+      const buffer = Buffer.alloc(8192);
+      const { bytesRead } = await handle.read(buffer, 0, 8192, 0);
+      for (const line of buffer.toString("utf8", 0, bytesRead).split("\n")) {
+        if (line.trim() === "") continue;
+        try {
+          const row = JSON.parse(line) as { event?: { type?: string; prompt?: string } };
+          if (row.event?.type === "turn.started" && typeof row.event.prompt === "string") {
+            return row.event.prompt.slice(0, 60);
+          }
+        } catch {
+          // 坏行跳过（#42 同款容错）
+        }
+      }
+      return "";
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return "";
   }
 }
 

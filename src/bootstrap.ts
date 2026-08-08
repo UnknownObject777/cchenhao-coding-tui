@@ -42,8 +42,8 @@ export interface BootstrapOptions {
   fake?: boolean;
   /** print 模式审批策略（#27）：给了才装配审批 gate；TUI 模式由 #28 装配自己的 gate。 */
   printApproval?: { yes: boolean };
-  /** 会话策略（#6）：continue = 继续工作区最近会话（TUI 用）；new/缺省 = 新会话（print 用）。 */
-  session?: "new" | "continue";
+  /** 会话策略（#6）：continue = 继续最近（TUI 用）；new/缺省 = 新会话（print 用）；{resume} = 指定会话文件（#47 选择器）。 */
+  session?: "new" | "continue" | { resume: string };
   /** 测试缝：覆盖会话根目录（默认 ~/.mini-agent/sessions）。 */
   sessionRoot?: string;
   /** 测试缝：覆盖 home 目录（配置文件用户级查找）。 */
@@ -61,18 +61,19 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   let history: RebuiltMessage[] = [];
   let contextMessages: Message[] = [];
   let approvalMemory: string[] = [];
-  if (options.session === "continue") {
-    const latest = await store.latestPath();
-    if (latest !== undefined) {
-      sessionPath = latest;
-      const rows = await new WireService(latest).readAll();
-      const rebuilder = new Rebuilder();
-      history = rebuilder.rebuild(rows);
-      contextMessages = rebuilder.rebuildForContext(rows);
-      approvalMemory = [...alwaysMemoryFrom(rows)];
-    } else {
-      sessionPath = store.createPath();
-    }
+  const resumePath =
+    typeof options.session === "object"
+      ? options.session.resume
+      : options.session === "continue"
+        ? await store.latestPath()
+        : undefined;
+  if (resumePath !== undefined) {
+    sessionPath = resumePath;
+    const rows = await new WireService(resumePath).readAll();
+    const rebuilder = new Rebuilder();
+    history = rebuilder.rebuild(rows);
+    contextMessages = rebuilder.rebuildForContext(rows);
+    approvalMemory = [...alwaysMemoryFrom(rows)];
   } else {
     // print 会话进 print/ 子目录，不污染 TUI 的「继续上次」
     sessionPath = store.createPath(options.printApproval ? "print" : "chat");
