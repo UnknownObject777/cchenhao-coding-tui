@@ -1,3 +1,5 @@
+import { truncateToolOutput } from "./truncate.ts";
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -32,9 +34,10 @@ export class ToolExecutor {
       return { ok: false, output: `unknown tool: ${name}` };
     }
     try {
-      return { ok: true, output: await tool.execute(args) };
+      // 输出护栏统一收口（#37）：行数/字节双阈值 + [...truncated] 标记
+      return { ok: true, output: truncateToolOutput(await tool.execute(args)) };
     } catch (error) {
-      return { ok: false, output: `tool ${name} failed: ${errorMessage(error)}` };
+      return { ok: false, output: truncateToolOutput(`tool ${name} failed: ${errorMessage(error)}`) };
     }
   }
 }

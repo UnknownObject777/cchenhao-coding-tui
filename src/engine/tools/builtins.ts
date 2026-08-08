@@ -1,19 +1,15 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import type { ToolExecutor } from "./executor.ts";
+import { registerSearchTools } from "./search.ts";
+import { resolveInside as resolveInsideWorkspace } from "./workspace.ts";
 
-/** 内置玩具工具：read_file / write_file / run_command。文件操作限制在工作区内。 */
+/** 内置玩具工具：read_file / write_file / run_command / list_files / grep / glob。文件操作限制在工作区内。 */
 export function registerBuiltinTools(executor: ToolExecutor, workspace: string): void {
   const root = resolve(workspace);
 
-  const resolveInside = (path: string): string => {
-    const full = resolve(root, path);
-    if (full !== root && !full.startsWith(root + sep)) {
-      throw new Error(`path escapes workspace: ${path}`);
-    }
-    return full;
-  };
+  const resolveInside = (path: string): string => resolveInsideWorkspace(root, path);
 
   executor.register({
     name: "read_file",
@@ -60,6 +56,8 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string):
       return runShell(String(args["command"]), root, timeout);
     },
   });
+
+  registerSearchTools(executor, root);
 }
 
 function runShell(command: string, cwd: string, timeout: number): Promise<string> {
