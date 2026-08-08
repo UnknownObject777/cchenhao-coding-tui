@@ -21,18 +21,35 @@ const USAGE = `mini coding agent
 `;
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
 
-  if (args.includes("--help") || args.includes("-h")) {
+  if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
     process.stdout.write(USAGE);
     return;
   }
 
+  // 先挑出带值/不带值的已知旗标，余下位置参数再取 -p 的值
+  const yes = rawArgs.includes("--yes") || rawArgs.includes("-y");
+  const newSession = rawArgs.includes("--new");
+  let outputFormat: string | undefined;
+  const args: string[] = [];
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const a = rawArgs[i]!;
+    if (a === "--yes" || a === "-y" || a === "--new") continue;
+    if (a === "--output-format") {
+      outputFormat = rawArgs[i + 1];
+      i += 1;
+      continue;
+    }
+    args.push(a);
+  }
+  if (outputFormat !== undefined && outputFormat !== "text" && outputFormat !== "stream-json") {
+    process.stderr.write(`未知 --output-format: ${outputFormat}（可选 text | stream-json）\n`);
+    process.exit(2);
+  }
+
   const promptFlag = args.findIndex((a) => a === "-p" || a === "--prompt");
   const prompt = promptFlag >= 0 ? args[promptFlag + 1] : undefined;
-  const yes = args.includes("--yes") || args.includes("-y");
-  // TUI 默认继续工作区最近会话（#6）；--new 强制新会话
-  const newSession = args.includes("--new");
 
   const agent = await bootstrap({
     workspace: process.cwd(),
@@ -43,7 +60,7 @@ async function main(): Promise<void> {
   });
 
   if (prompt !== undefined) {
-    process.exit(await runPrompt(agent, prompt));
+    process.exit(await runPrompt(agent, prompt, { ...(outputFormat !== undefined ? { outputFormat } : {}) }));
   }
 
   await runTui(agent, {
