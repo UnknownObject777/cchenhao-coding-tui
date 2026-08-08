@@ -4,9 +4,11 @@
  */
 import chalk from "chalk";
 
-import { Text, truncateToWidth, visibleWidth, type Component } from "../../../../vendor/pi-tui/src/index.ts";
+import { Text, type Component } from "../../../../vendor/pi-tui/src/index.ts";
 import { USER_MESSAGE_BULLET } from "../../constant/symbols.ts";
+import { hex } from "../../theme/pi-tui-theme.ts";
 import { currentTheme } from "../../theme/theme.ts";
+import { bulletWidth, layOutBlock } from "./block-layout.ts";
 
 export class UserMessageComponent implements Component {
   private readonly text: string;
@@ -19,13 +21,9 @@ export class UserMessageComponent implements Component {
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width);
-    const roleColor = chalk.hex(currentTheme.color("roleUser"));
-    const bullet = roleColor.bold(USER_MESSAGE_BULLET);
-    const indent = " ".repeat(visibleWidth(USER_MESSAGE_BULLET));
-    const contentWidth = Math.max(1, safeWidth - visibleWidth(USER_MESSAGE_BULLET));
-
-    const bodyLines = new Text(roleColor(this.text), 0, 0).render(contentWidth);
-    const lines = ["", ...bodyLines.map((line, i) => (i === 0 ? bullet : indent) + line)];
-    return lines.map((line) => truncateToWidth(line, safeWidth, "…"));
+    const bullet = chalk.hex(currentTheme.color("roleUser")).bold(USER_MESSAGE_BULLET);
+    const contentWidth = Math.max(1, safeWidth - bulletWidth(USER_MESSAGE_BULLET));
+    const bodyLines = new Text(hex("roleUser")(this.text), 0, 0).render(contentWidth);
+    return layOutBlock(safeWidth, bullet, bodyLines);
   }
 }

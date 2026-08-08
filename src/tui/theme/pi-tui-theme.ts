@@ -15,7 +15,7 @@ import { currentTheme } from "./theme.ts";
 // eslint-disable-next-line no-control-regex -- 有意匹配 ANSI SGR 的 ESC 字节
 const HEADING_HASH_PREFIX = /^((?:\u001B\[[0-9;]*m)*)#{1,6}[ \t]+/;
 
-function hex(token: keyof ColorPalette): (text: string) => string {
+export function hex(token: keyof ColorPalette): (text: string) => string {
   return (text) => chalk.hex(currentTheme.color(token))(text);
 }
 

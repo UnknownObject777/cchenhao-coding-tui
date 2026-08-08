@@ -2,18 +2,15 @@
  * assistant 消息块：Markdown 内容 + ● bullet，支持流式 updateContent。
  * 对齐 kimi-code components/messages/assistant-message.ts 的迷你版（无 transient、无渲染缓存）。
  */
-import chalk from "chalk";
-
 import {
   Container,
   Markdown,
-  truncateToWidth,
   visibleWidth,
   type Component,
 } from "../../../../vendor/pi-tui/src/index.ts";
-import { MESSAGE_INDENT, STATUS_BULLET } from "../../constant/symbols.ts";
-import { createMarkdownTheme } from "../../theme/pi-tui-theme.ts";
-import { currentTheme } from "../../theme/theme.ts";
+import { STATUS_BULLET } from "../../constant/symbols.ts";
+import { createMarkdownTheme, hex } from "../../theme/pi-tui-theme.ts";
+import { layOutBlock } from "./block-layout.ts";
 
 export class AssistantMessageComponent implements Component {
   private readonly container = new Container();
@@ -47,9 +44,6 @@ export class AssistantMessageComponent implements Component {
     const safeWidth = Math.max(1, width);
     const contentWidth = Math.max(1, safeWidth - visibleWidth(STATUS_BULLET));
     const contentLines = this.container.render(contentWidth);
-
-    const bullet = chalk.hex(currentTheme.color("text"))(STATUS_BULLET);
-    const lines = ["", ...contentLines.map((line, i) => (i === 0 ? bullet : MESSAGE_INDENT) + line)];
-    return lines.map((line) => truncateToWidth(line, safeWidth, "…"));
+    return layOutBlock(safeWidth, hex("text")(STATUS_BULLET), contentLines);
   }
 }
