@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,12 +23,17 @@ describe("TUI end-to-end smoke (fake LLM)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("runs a full turn with tool frames in the viewport", async () => {
+  async function setupApp(onExit: () => void = () => {}) {
     const agent = await bootstrap({ workspace: dir, fake: true });
     const h = createTuiHarness(80, 24);
     const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: agent.model, cwd: dir };
-    assembleTui(h.tui, agent, info, () => {});
+    assembleTui(h.tui, agent, info, onExit);
     await h.tui.start();
+    return { agent, h };
+  }
+
+  it("runs a full turn with tool frames in the viewport", async () => {
+    const { agent, h } = await setupApp();
     await h.render();
 
     // welcome 已上屏
@@ -64,12 +68,8 @@ describe("TUI end-to-end smoke (fake LLM)", () => {
   });
 
   it("Ctrl+C triggers the exit hook", async () => {
-    const agent = await bootstrap({ workspace: dir, fake: true });
-    const h = createTuiHarness(80, 24);
-    const info: TuiAppInfo = { toolName: "mini-agent", version: "0.0.0-test", model: agent.model, cwd: dir };
     const onExit = vi.fn();
-    assembleTui(h.tui, agent, info, onExit);
-    await h.tui.start();
+    const { h } = await setupApp(onExit);
 
     h.terminal.sendInput("\x03");
     await vi.waitFor(() => expect(onExit).toHaveBeenCalledOnce());

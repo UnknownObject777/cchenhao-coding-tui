@@ -19,7 +19,7 @@ export interface Agent {
   bus: EventBus;
   wire: WireService;
   workspace: string;
-  /** 生效的模型名（fake 模式为 "fake-llm"），供 footer/welcome 展示。 */
+  /** 生效的模型名（fake 模式为 "fake-llm"），供 UI 展示。 */
   model: string;
 }
 
