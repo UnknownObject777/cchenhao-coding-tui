@@ -3,7 +3,9 @@
  * 输入路由（slash 命令 or 引擎 turn）、turn 期间禁止提交、Ctrl+C 拦截转 onExit。
  * 组件上树的装配在 #18 的 bootstrap；editor.onSubmit 与 bus 订阅由本类的 start() 接线。
  */
-import type { Agent } from "../bootstrap.ts";
+import type { EventBus } from "../engine/events.ts";
+import type { Loop } from "../engine/loop.ts";
+import type { WireService } from "../engine/wire.ts";
 import {
   matchesKey,
   type Container,
@@ -16,11 +18,18 @@ import type { SlashCommandContext, SlashCommandDefinition } from "./commands/typ
 import { errorLine } from "./components/messages/error-line.ts";
 import { UserMessageComponent } from "./components/messages/user-message.ts";
 
+/** coordinator 需要的引擎能力面（窄接口，结构类型；bootstrap.Agent 天然满足）。 */
+export interface CoordinatorAgent {
+  bus: EventBus;
+  loop: Pick<Loop, "runTurn" | "reset">;
+  wire: Pick<WireService, "clear">;
+}
+
 export interface CoordinatorDeps {
   tui: TUI;
   editor: Editor;
   chat: Container;
-  agent: Agent;
+  agent: CoordinatorAgent;
   /** 默认 builtinCommands()；测试可注入。 */
   commands?: SlashCommandDefinition[];
   onExit: () => void;

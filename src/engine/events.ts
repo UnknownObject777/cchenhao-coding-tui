@@ -8,6 +8,15 @@ export interface EngineEvents {
   "assistant.think": { text: string };
   "tool.call": { id: string; name: string; args: Record<string, unknown> };
   "tool.result": { id: string; name: string; ok: boolean; output: string };
+  /** 审批询问（含规则引擎判定的级别；deny 级不真发问，仅留痕）。由 gate 实现方发布。 */
+  "approval.request": {
+    id: string;
+    name: string;
+    args: Record<string, unknown>;
+    level: "confirm" | "deny";
+  };
+  /** 审批结论。由 Loop 在 gate 返回后发布。 */
+  "approval.decision": { id: string; decision: "allow" | "always" | "deny" };
   "turn.ended": { turnId: number; reason: "finish" | "error"; error?: string };
 }
 

@@ -98,6 +98,9 @@ export class Rebuilder {
           flushAssistant();
           break;
         case "assistant.think":
+        case "approval.request":
+        case "approval.decision":
+          // 思考流与审批留痕不参与消息重建
           break;
       }
     }

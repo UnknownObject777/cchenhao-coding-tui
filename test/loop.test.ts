@@ -3,18 +3,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EventBus, type EngineEvent } from "../src/engine/events.ts";
+import type { ApprovalGate } from "../src/engine/approval/gate.ts";
 import { FakeLLM } from "../src/engine/llm/fake.ts";
 import { Loop } from "../src/engine/loop.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
 import { WireService } from "../src/engine/wire.ts";
 
-function setup(script: ConstructorParameters<typeof FakeLLM>[0], wirePath?: string) {
+function setup(
+  script: ConstructorParameters<typeof FakeLLM>[0],
+  wirePath?: string,
+  approvalGate?: ApprovalGate,
+) {
   const bus = new EventBus();
   const events: EngineEvent[] = [];
   bus.on("turn.started", (p) => events.push({ type: "turn.started", ...p }));
   bus.on("assistant.delta", (p) => events.push({ type: "assistant.delta", ...p }));
   bus.on("tool.call", (p) => events.push({ type: "tool.call", ...p }));
   bus.on("tool.result", (p) => events.push({ type: "tool.result", ...p }));
+  bus.on("approval.decision", (p) => events.push({ type: "approval.decision", ...p }));
   bus.on("turn.ended", (p) => events.push({ type: "turn.ended", ...p }));
 
   const executor = new ToolExecutor();
@@ -32,6 +38,7 @@ function setup(script: ConstructorParameters<typeof FakeLLM>[0], wirePath?: stri
     bus,
     systemPrompt: "you are a toy",
     ...(wirePath ? { wire: new WireService(wirePath) } : {}),
+    ...(approvalGate ? { approvalGate } : {}),
   });
   return { loop, events, llm };
 }
@@ -185,5 +192,61 @@ describe("loop", () => {
       { role: "system", content: "you are a toy" },
       { role: "user", content: "turn two" },
     ]);
+  });
+
+  it("denied tool calls are not executed but fed back as a failed tool result", async () => {
+    const { loop, events, llm } = setup(
+      [
+        [
+          { type: "tool_call", id: "c1", name: "read_file", args: { path: "secret.txt" } },
+          { type: "finish", reason: "tool_calls" },
+        ],
+        [{ type: "text", text: "好吧" }, { type: "finish", reason: "stop" }],
+      ],
+      undefined,
+      { request: () => Promise.resolve("deny") },
+    );
+
+    await loop.runTurn("read secret.txt");
+
+    expect(events.map((e) => e.type)).toEqual([
+      "turn.started",
+      "tool.call",
+      "approval.decision",
+      "tool.result",
+      "assistant.delta",
+      "turn.ended",
+    ]);
+    expect(events[2]).toEqual({ type: "approval.decision", id: "c1", decision: "deny" });
+    expect(events[3]).toMatchObject({ type: "tool.result", id: "c1", ok: false });
+    // 拒绝结果回灌进下一轮请求（协议要求每个 tool_call 都有 tool 回复）
+    const toolMessage = llm.requests[1]!.find((m) => m.role === "tool");
+    expect(toolMessage).toMatchObject({ role: "tool", toolCallId: "c1" });
+    expect(String(toolMessage && "content" in toolMessage ? toolMessage.content : "")).toContain("denied");
+  });
+
+  it("allowed tool calls execute normally through the gate", async () => {
+    const { loop, events } = setup(
+      [
+        [
+          { type: "tool_call", id: "c1", name: "read_file", args: { path: "a.txt" } },
+          { type: "finish", reason: "tool_calls" },
+        ],
+        [{ type: "finish", reason: "stop" }],
+      ],
+      undefined,
+      { request: () => Promise.resolve("allow") },
+    );
+
+    await loop.runTurn("read a.txt");
+
+    expect(events).toContainEqual({ type: "approval.decision", id: "c1", decision: "allow" });
+    expect(events).toContainEqual({
+      type: "tool.result",
+      id: "c1",
+      name: "read_file",
+      ok: true,
+      output: "contents of a.txt",
+    });
   });
 });

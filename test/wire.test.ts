@@ -97,4 +97,24 @@ describe("wire", () => {
   it("clear on a missing file is a no-op", async () => {
     await expect(new WireService(wirePath).clear()).resolves.toBeUndefined();
   });
+
+  it("rebuilder skips approval events without breaking the fold", async () => {
+    const events: EngineEvent[] = [
+      { type: "turn.started", turnId: 1, prompt: "hi" },
+      { type: "tool.call", id: "c1", name: "write_file", args: { path: "a.txt" } },
+      { type: "approval.request", id: "c1", name: "write_file", args: { path: "a.txt" }, level: "confirm" },
+      { type: "approval.decision", id: "c1", decision: "deny" },
+      { type: "tool.result", id: "c1", name: "write_file", ok: false, output: "denied" },
+      { type: "turn.ended", turnId: 1, reason: "finish" },
+    ];
+    const wire = new WireService(wirePath);
+    for (const event of events) await wire.append(event);
+
+    const messages = new Rebuilder().rebuild(await wire.readAll());
+
+    expect(messages).toEqual([
+      { role: "user", text: "hi" },
+      { role: "tool", name: "write_file", args: { path: "a.txt" }, ok: false, output: "denied" },
+    ]);
+  });
 });

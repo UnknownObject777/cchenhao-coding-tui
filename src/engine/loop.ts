@@ -1,3 +1,4 @@
+import type { ApprovalGate } from "./approval/gate.ts";
 import type { EventBus, EngineEventName, EngineEvents } from "./events.ts";
 import type { LLMRequester, Message, ToolCall } from "./llm/types.ts";
 import { errorMessage, type ToolExecutor } from "./tools/executor.ts";
@@ -9,6 +10,8 @@ export interface LoopOptions {
   bus: EventBus;
   systemPrompt: string;
   wire?: WireService;
+  /** 审批缝（#5）：tool.call 发布后、执行前 await；缺省不审批。 */
+  approvalGate?: ApprovalGate;
   /** 单个 turn 内 LLM 往返的最大轮数（防 tool call 死循环）。 */
   maxRounds?: number;
 }
@@ -104,6 +107,18 @@ export class Loop {
     }
 
     for (const call of toolCalls) {
+      const gate = this.options.approvalGate;
+      if (gate !== undefined) {
+        const decision = await gate.request(call);
+        this.publish("approval.decision", { id: call.id, decision });
+        if (decision === "deny") {
+          // 拒绝回灌成 tool 结果让模型自纠（协议要求每个 tool_call 都有 tool 回复）
+          const output = `tool call denied by approval policy: ${call.name}`;
+          this.publish("tool.result", { id: call.id, name: call.name, ok: false, output });
+          this.messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: output });
+          continue;
+        }
+      }
       const result = await executor.execute(call.name, call.args);
       this.publish("tool.result", { id: call.id, name: call.name, ok: result.ok, output: result.output });
       this.messages.push({
