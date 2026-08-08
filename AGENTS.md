@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues live as local markdown files under `.scratch/<feature>/` in this repo (no remote tracker). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues on `UnknownObject777/cchenhao-coding-tui` (use the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
