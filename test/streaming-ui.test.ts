@@ -105,6 +105,36 @@ describe("StreamingUiController", () => {
     expect(vp).toContain("✗");
     expect(vp).toContain("disk full");
   });
+
+  it("renders think streams as a folded dim block, separate from the reply (#20)", async () => {
+    const { h, bus } = await mountWithController();
+    bus.emit("turn.started", { turnId: 1, prompt: "hi" });
+    bus.emit("assistant.think", { text: "先想想第一步" });
+    bus.emit("assistant.think", { text: "，再动手" });
+    await h.render();
+    let vp = h.viewport();
+    expect(vp).toContain("thinking");
+    expect(vp).toContain("先想想第一步");
+
+    bus.emit("assistant.delta", { text: "正式回复" });
+    await h.render();
+    vp = h.viewport();
+    // 思考折叠块仍在，正文独立成块，且摘要不混入正文
+    expect(vp).toContain("thinking");
+    expect(vp).toContain("正式回复");
+    expect(vp.indexOf("thinking")).toBeLessThan(vp.indexOf("正式回复"));
+  });
+
+  it("folds long think content to a one-line preview", async () => {
+    const { h, bus } = await mountWithController();
+    bus.emit("turn.started", { turnId: 1, prompt: "hi" });
+    bus.emit("assistant.think", { text: `${"很长的思考".repeat(30)}\n第二行` });
+    await h.render();
+    const vp = h.viewport();
+    expect(vp).toContain("thinking");
+    expect(vp).toContain("…");
+    expect(vp).not.toContain("第二行");
+  });
 });
 
 describe("chrome components", () => {

@@ -10,6 +10,7 @@ import type { EventBus } from "../../engine/events.ts";
 import { type Container } from "../../../vendor/pi-tui/src/index.ts";
 import { AssistantMessageComponent } from "../components/messages/assistant-message.ts";
 import { errorLine } from "../components/messages/error-line.ts";
+import { ThinkingComponent } from "../components/messages/thinking.ts";
 import { ToolCallComponent } from "../components/messages/tool-call.ts";
 import { ThemedLoader } from "../components/chrome/loader.ts";
 
@@ -29,7 +30,9 @@ export class StreamingUiController {
   private readonly unsubscribes: Array<() => void> = [];
 
   private accumulated = "";
+  private accumulatedThink = "";
   private currentAssistant: AssistantMessageComponent | undefined;
+  private currentThinking: ThinkingComponent | undefined;
   private readonly pendingTools = new Map<string, ToolCallComponent>();
 
   constructor(deps: StreamingUiDeps) {
@@ -43,13 +46,27 @@ export class StreamingUiController {
     this.unsubscribes.push(
       this.bus.on("turn.started", () => {
         this.accumulated = "";
+        this.accumulatedThink = "";
         this.currentAssistant = undefined;
+        this.currentThinking = undefined;
         this.pendingTools.clear();
         this.loader.start();
         this.requestRender();
       }),
+      this.bus.on("assistant.think", ({ text }) => {
+        this.accumulatedThink += text;
+        if (this.currentThinking === undefined) {
+          this.currentThinking = new ThinkingComponent();
+          this.chat.addChild(this.currentThinking);
+        }
+        this.currentThinking.updateContent(this.accumulatedThink);
+        this.requestRender();
+      }),
       this.bus.on("assistant.delta", ({ text }) => {
         this.loader.hide();
+        // 正文开始 = 思考块封版（折叠留在上方，不混进 Markdown 回复）
+        this.currentThinking = undefined;
+        this.accumulatedThink = "";
         this.accumulated += text;
         if (this.currentAssistant === undefined) {
           this.currentAssistant = new AssistantMessageComponent();
@@ -60,9 +77,11 @@ export class StreamingUiController {
       }),
       this.bus.on("tool.call", ({ id, name, args }) => {
         this.loader.hide();
-        // 当前 assistant 块封版：工具帧之后的文本属于新块
+        // 当前 assistant/思考块封版：工具帧之后的内容属于新块
         this.currentAssistant = undefined;
+        this.currentThinking = undefined;
         this.accumulated = "";
+        this.accumulatedThink = "";
         const frame = new ToolCallComponent(name, args);
         this.pendingTools.set(id, frame);
         this.chat.addChild(frame);
@@ -76,7 +95,9 @@ export class StreamingUiController {
       this.bus.on("turn.ended", ({ reason, error }) => {
         this.loader.hide();
         this.currentAssistant = undefined;
+        this.currentThinking = undefined;
         this.accumulated = "";
+        this.accumulatedThink = "";
         if (reason === "error" && error !== undefined) {
           this.chat.addChild(errorLine(error));
         }
