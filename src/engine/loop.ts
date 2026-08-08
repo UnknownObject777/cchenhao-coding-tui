@@ -72,6 +72,7 @@ export class Loop {
       for (let round = 0; round < maxRounds; round += 1) {
         const finished = await this.runRound();
         if (finished) {
+          this.publishUsage(); // turn 收尾的占用（footer 不滞后一轮）
           this.publish("turn.ended", { turnId, reason: "finish" });
           await this.wireQueue;
           return;
@@ -149,12 +150,8 @@ export class Loop {
     this.messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: output });
   }
 
-  /** 当前上下文占用（tokens，粗估）。footer 与截断共用同一估算。 */
-  contextUsage(): { estimatedTokens: number; budgetTokens: number } {
-    return {
-      estimatedTokens: estimateTokens(this.messages),
-      budgetTokens: this.options.contextTokenBudget ?? CONTEXT_TOKEN_BUDGET,
-    };
+  private get contextTokenBudget(): number {
+    return this.options.contextTokenBudget ?? CONTEXT_TOKEN_BUDGET;
   }
 
   /**
@@ -163,7 +160,7 @@ export class Loop {
    * 每次 LLM 请求前调用，并顺带发布 context.usage。
    */
   private enforceContextWindow(): void {
-    const budget = this.options.contextTokenBudget ?? CONTEXT_TOKEN_BUDGET;
+    const budget = this.contextTokenBudget;
     let estimated = estimateTokens(this.messages);
     if (estimated > budget * TRUNCATE_HIGH_WATER) {
       this.messages = truncateToWindow(this.messages, Math.floor(budget * TRUNCATE_LOW_WATER));
@@ -174,7 +171,14 @@ export class Loop {
         );
       }
     }
-    this.publish("context.usage", { estimatedTokens: estimated, budgetTokens: budget });
+    this.publishUsage();
+  }
+
+  private publishUsage(): void {
+    this.publish("context.usage", {
+      estimatedTokens: estimateTokens(this.messages),
+      budgetTokens: this.contextTokenBudget,
+    });
   }
 
   private publish<K extends EngineEventName>(event: K, payload: EngineEvents[K]): void {

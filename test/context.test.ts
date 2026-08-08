@@ -142,4 +142,17 @@ describe("footer context usage (#32)", () => {
     footer.setUsage(12000, 256000);
     expect(footer.render(80)[0]).toContain("ctx 12k/256k");
   });
+
+  it("switches to the warning color near the budget", async () => {
+    const { default: chalk } = await import("chalk");
+    chalk.level = 3;
+    const { FooterComponent } = await import("../src/tui/components/chrome/footer.ts");
+    const footer = new FooterComponent({ model: "m", cwd: "/p" });
+    footer.setUsage(12000, 256000);
+    const calm = footer.render(80)[0]!;
+    footer.setUsage(200000, 256000);
+    const warned = footer.render(80)[0]!;
+    expect(warned).toContain("ctx 200k/256k");
+    expect(warned).not.toBe(calm); // warning 色上了 ANSI
+  });
 });

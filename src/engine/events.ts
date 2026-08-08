@@ -17,7 +17,7 @@ export interface EngineEvents {
   };
   /** 审批结论。由 Loop 在 gate 返回后发布。 */
   "approval.decision": { id: string; decision: "allow" | "always" | "deny" };
-  /** 上下文占用（#32）：turn 开始与每轮 LLM 往返后发布，footer 显示用。 */
+  /** 上下文占用（#32）：每轮 LLM 请求前与 turn 收尾时发布，footer 显示用。 */
   "context.usage": { estimatedTokens: number; budgetTokens: number };
   "turn.ended": { turnId: number; reason: "finish" | "error"; error?: string };
 }
