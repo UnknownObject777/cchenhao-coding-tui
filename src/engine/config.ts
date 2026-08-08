@@ -31,9 +31,17 @@ const ENV_KEYS: Record<string, string> = {
 };
 
 async function readConfigFile(path: string): Promise<AgentConfigFile | undefined> {
+  let raw: string;
   try {
-    return JSON.parse(await readFile(path, "utf8")) as AgentConfigFile;
+    raw = await readFile(path, "utf8");
   } catch {
+    return undefined; // 文件不存在＝没配置，静默
+  }
+  try {
+    return JSON.parse(raw) as AgentConfigFile;
+  } catch (error) {
+    // 写坏的配置不能静默吞掉——用户会误以为已生效
+    process.stderr.write(`[config] 警告：${path} 解析失败（${error instanceof Error ? error.message : String(error)}），已忽略\n`);
     return undefined;
   }
 }
@@ -81,11 +89,41 @@ export async function loadEffectiveConfig(workspace: string, home: string = home
   return result;
 }
 
+/**
+ * 系统 prompt 解析（#39）：显式 system_prompt_file > 项目级 .agent.md > 内置默认。
+ * 显式文件读不到＝大声失败（用户点名了的文件）；.agent.md 探查静默。
+ */
+export async function resolveSystemPrompt(
+  config: EffectiveConfig,
+  workspace: string,
+  builtinDefault: string,
+): Promise<{ prompt: string; source: string }> {
+  if (config.systemPromptFile !== undefined) {
+    try {
+      return { prompt: await readFile(config.systemPromptFile, "utf8"), source: config.systemPromptFile };
+    } catch (error) {
+      throw new Error(
+        `system_prompt_file 指向的文件读不到：${config.systemPromptFile}（${error instanceof Error ? error.message : String(error)}）`,
+      );
+    }
+  }
+  const agentMd = join(workspace, ".agent.md");
+  try {
+    return { prompt: await readFile(agentMd, "utf8"), source: agentMd };
+  } catch {
+    return { prompt: builtinDefault, source: "builtin default" };
+  }
+}
+
 /** 生效来源的脱敏打印（stderr；只打字段与来源，不打值）。 */
 export function describeConfigSources(config: EffectiveConfig, apiKeyFallback: string): string {
-  const lines = Object.entries(config.sources).map(([field, source]) => `  ${field} ← ${source}`);
-  if (config.sources["apiKey"] === undefined) {
-    lines.push(`  apiKey ← ${apiKeyFallback}`);
-  }
-  return lines.join("\n");
+  const fields: Array<keyof EffectiveConfig & string> = ["apiKey", "baseUrl", "model", "systemPromptFile"];
+  return fields
+    .map((field) => {
+      const source =
+        config.sources[field] ?? (field === "apiKey" ? apiKeyFallback : field === "systemPromptFile" ? undefined : "default");
+      return source === undefined ? undefined : `  ${field} ← ${source}`;
+    })
+    .filter((line) => line !== undefined)
+    .join("\n");
 }

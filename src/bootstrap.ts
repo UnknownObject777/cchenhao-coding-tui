@@ -2,14 +2,12 @@ import { createComposedGate, alwaysMemoryFrom } from "./engine/approval/composed
 import type { ApprovalGate } from "./engine/approval/gate.ts";
 import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
 import { EventBus } from "./engine/events.ts";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { resolveKimiCredentials } from "./engine/llm/credentials.ts";
 import { FakeLLM } from "./engine/llm/fake.ts";
 import { KimiLLM } from "./engine/llm/kimi.ts";
 import type { LLMRequester, Message } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
-import { describeConfigSources, loadEffectiveConfig } from "./engine/config.ts";
+import { describeConfigSources, loadEffectiveConfig, resolveSystemPrompt } from "./engine/config.ts";
 import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
 import { ToolExecutor } from "./engine/tools/executor.ts";
@@ -87,20 +85,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   const config = await loadEffectiveConfig(workspace, options.homeDir);
 
   // 系统 prompt（#39）：显式配置 > 项目级 .agent.md > 内置默认
-  let systemPrompt = SYSTEM_PROMPT;
-  let promptSource = "builtin default";
-  if (config.systemPromptFile !== undefined) {
-    systemPrompt = await readFile(config.systemPromptFile, "utf8");
-    promptSource = config.systemPromptFile;
-  } else {
-    const agentMd = join(workspace, ".agent.md");
-    try {
-      systemPrompt = await readFile(agentMd, "utf8");
-      promptSource = agentMd;
-    } catch {
-      // 无项目级覆盖，用默认
-    }
-  }
+  const { prompt: systemPrompt, source: promptSource } = await resolveSystemPrompt(config, workspace, SYSTEM_PROMPT);
 
   let llm: LLMRequester;
   let model: string;
