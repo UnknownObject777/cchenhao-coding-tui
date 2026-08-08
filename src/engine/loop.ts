@@ -42,6 +42,11 @@ export class Loop {
     }
   }
 
+  /** 装配后置 gate（TUI 的审批应答源依赖 UI 部件，只能在组件树搭好后注入，#28）。 */
+  setApprovalGate(gate: ApprovalGate): void {
+    this.options.approvalGate = gate;
+  }
+
   async runTurn(prompt: string): Promise<void> {
     this.turnCount += 1;
     const turnId = this.turnCount;

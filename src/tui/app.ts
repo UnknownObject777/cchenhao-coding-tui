@@ -4,12 +4,14 @@
  * 布局顺序 = addChild 顺序：welcome → chat（消息流）→ loader → footer → editor。
  */
 import type { Agent } from "../bootstrap.ts";
+import { createComposedGate } from "../engine/approval/composed-gate.ts";
 import {
   Container,
   Editor,
   ProcessTerminal,
   TUI,
 } from "../../vendor/pi-tui/src/index.ts";
+import { TuiApprovalAnswerer } from "./approval/tui-answerer.ts";
 import { FooterComponent } from "./components/chrome/footer.ts";
 import { createLoader } from "./components/chrome/loader.ts";
 import { WelcomeComponent } from "./components/chrome/welcome.ts";
@@ -59,6 +61,11 @@ export function assembleTui(
     requestRender: () => tui.requestRender(),
   });
   streamingUi.start();
+
+  // 审批（#28）：TUI 应答源 + 规则/记忆组合体，后置注入 loop（应答源依赖组件树）
+  const answerer = new TuiApprovalAnswerer({ tui, chat });
+  answerer.attach();
+  agent.loop.setApprovalGate(createComposedGate({ bus: agent.bus, workspace: agent.workspace, answerer }));
 
   const coordinator = new TuiCoordinator({ tui, editor, chat, agent, onExit });
   coordinator.start();
