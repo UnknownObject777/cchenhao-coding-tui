@@ -8,10 +8,10 @@ import { runPrompt } from "./run-prompt.ts";
 const USAGE = `mini coding agent
 
 用法:
-  agent -p "<prompt>"   一次性执行（print 模式），结果输出到 stdout
-  agent -p --yes|-y "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
-  agent                 交互式 TUI（默认继续该目录的最近会话）
-  agent --new           交互式 TUI，强制新会话
+  mini-agent -p "<prompt>"   一次性执行（print 模式），结果输出到 stdout
+  mini-agent -p --yes|-y "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
+  mini-agent                 交互式 TUI（默认继续该目录的最近会话）
+  mini-agent --new           交互式 TUI，强制新会话
 
 环境变量:
   KIMI_API_KEY   直接用 API key（不设置则读 kimi-code 订阅的 OAuth 凭证）

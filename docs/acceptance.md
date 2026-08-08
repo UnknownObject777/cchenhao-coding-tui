@@ -416,7 +416,7 @@ KIMI_API_KEY=xxx npm run agent -- -p "hi"   # 等组合逐一试
 ```bash
 npm link
 cd /tmp/some-random-dir   # 或任意其他目录
-agent -p "写一个 helloworld"
+mini-agent -p "写一个 helloworld"
 ```
 
 在任意目录 `agent` 命令可用且功能完整即通过；若选 bundle 路线则验证单文件可执行、无 node_modules 依赖。

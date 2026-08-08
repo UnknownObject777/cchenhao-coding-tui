@@ -37,7 +37,8 @@ describe("approval rules (classifyCall)", () => {
 
   describe("writes outside the workspace are denied", () => {
     it("write_file with absolute path outside workspace", () => {
-      expect(classifyCall({ id: "1", name: "write_file", args: { path: "C:/Windows/x.txt" } }, WS)).toBe("deny");
+      const outside = process.platform === "win32" ? "C:/Windows/x.txt" : "/etc/x.txt";
+      expect(classifyCall({ id: "1", name: "write_file", args: { path: outside } }, WS)).toBe("deny");
     });
 
     it("write_file escaping via ..", () => {

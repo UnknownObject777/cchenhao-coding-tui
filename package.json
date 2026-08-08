@@ -5,7 +5,7 @@
   "type": "module",
   "description": "迷你 coding agent 玩具：引擎自写（loop/llmRequester/toolExecutor/wire），TUI 照搬 kimi-code 分层",
   "bin": {
-    "agent": "./src/cli/main.ts"
+    "mini-agent": "./src/cli/main.ts"
   },
   "scripts": {
     "dev": "tsx src/cli/main.ts",
