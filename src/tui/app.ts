@@ -6,12 +6,14 @@
 import type { Agent } from "../bootstrap.ts";
 import { createComposedGate } from "../engine/approval/composed-gate.ts";
 import {
+  CombinedAutocompleteProvider,
   Container,
   Editor,
   ProcessTerminal,
   TUI,
 } from "../../vendor/pi-tui/src/index.ts";
 import { TuiApprovalAnswerer } from "./approval/tui-answerer.ts";
+import { builtinCommands } from "./commands/builtins.ts";
 import { FooterComponent } from "./components/chrome/footer.ts";
 import { createLoader } from "./components/chrome/loader.ts";
 import { WelcomeComponent } from "./components/chrome/welcome.ts";
@@ -46,6 +48,13 @@ export function assembleTui(
   // pi-tui Loader 构造即 start（setIndicator → start），初始应隐藏，等 turn.started 再亮相
   loader.hide();
   const editor = new Editor(tui, createEditorTheme());
+  // slash 命令补全（#21）：命令声明单源 = commands/builtins 注册表
+  editor.setAutocompleteProvider(
+    new CombinedAutocompleteProvider(
+      builtinCommands().map((c) => ({ name: c.name, description: c.description })),
+      info.cwd,
+    ),
+  );
 
   tui.addChild(
     new WelcomeComponent({ toolName: info.toolName, version: info.version, model: info.model, cwd: info.cwd }),
