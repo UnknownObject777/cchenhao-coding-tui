@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./events.ts";
+import type { Message, ToolCall } from "./llm/types.ts";
 
 export interface WireRow {
   seq: number;
@@ -101,6 +102,64 @@ export class Rebuilder {
         case "approval.request":
         case "approval.decision":
           // 思考流与审批留痕不参与消息重建
+          break;
+      }
+    }
+    flushAssistant();
+    return messages;
+  }
+
+  /**
+   * 上下文通道（#29，#6 决策）：折叠出协议形状的 Message[] 喂回 LLM。
+   * tool.call 自带 id，与 tool.result 配对还原 toolCalls/toolCallId；
+   * 每个 tool_call 必有 tool 回复（loop 的不变量）， pairing 不会断。
+   */
+  rebuildForContext(rows: WireRow[]): Message[] {
+    const messages: Message[] = [];
+    let assistantText = "";
+    let pendingCalls: ToolCall[] = [];
+
+    const flushAssistant = () => {
+      if (assistantText !== "" || pendingCalls.length > 0) {
+        const message: Message = {
+          role: "assistant",
+          content: assistantText,
+          ...(pendingCalls.length > 0 ? { toolCalls: pendingCalls } : {}),
+        };
+        messages.push(message);
+        assistantText = "";
+        pendingCalls = [];
+      }
+    };
+
+    for (const { event } of rows) {
+      switch (event.type) {
+        case "turn.started":
+          flushAssistant();
+          messages.push({ role: "user", content: event.prompt });
+          break;
+        case "assistant.delta":
+          assistantText += event.text;
+          break;
+        case "tool.call":
+          pendingCalls.push({ id: event.id, name: event.name, args: event.args });
+          break;
+        case "tool.result":
+          // tool 消息跟在带 toolCalls 的 assistant 消息之后（协议顺序）
+          flushAssistant();
+          messages.push({
+            role: "tool",
+            toolCallId: event.id,
+            name: event.name,
+            content: event.output,
+          });
+          break;
+        case "turn.ended":
+          flushAssistant();
+          break;
+        case "assistant.think":
+        case "approval.request":
+        case "approval.decision":
           break;
       }
     }

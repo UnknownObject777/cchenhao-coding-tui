@@ -47,6 +47,11 @@ export class Loop {
     this.options.approvalGate = gate;
   }
 
+  /** 会话恢复（#29）：把冷重建的历史消息注入上下文（system prompt 之后）。 */
+  loadHistory(messages: Message[]): void {
+    this.messages.push(...messages);
+  }
+
   async runTurn(prompt: string): Promise<void> {
     this.turnCount += 1;
     const turnId = this.turnCount;

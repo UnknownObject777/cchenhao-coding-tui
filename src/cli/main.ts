@@ -10,7 +10,8 @@ const USAGE = `mini coding agent
 用法:
   agent -p "<prompt>"   一次性执行（print 模式），结果输出到 stdout
   agent -p --yes|-y "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
-  agent                 交互式 TUI
+  agent                 交互式 TUI（默认继续该目录的最近会话）
+  agent --new           交互式 TUI，强制新会话
 
 环境变量:
   KIMI_API_KEY   直接用 API key（不设置则读 kimi-code 订阅的 OAuth 凭证）
@@ -30,12 +31,15 @@ async function main(): Promise<void> {
   const promptFlag = args.findIndex((a) => a === "-p" || a === "--prompt");
   const prompt = promptFlag >= 0 ? args[promptFlag + 1] : undefined;
   const yes = args.includes("--yes") || args.includes("-y");
+  // TUI 默认继续工作区最近会话（#6）；--new 强制新会话
+  const newSession = args.includes("--new");
 
   const agent = await bootstrap({
     workspace: process.cwd(),
     fake: process.env["FAKE_LLM"] === "1",
     // print 模式无人可问：装配 --yes 审批策略（#27）；TUI 模式的交互审批归 #28
     ...(prompt !== undefined ? { printApproval: { yes } } : {}),
+    ...(prompt === undefined && !newSession ? { session: "continue" as const } : {}),
   });
 
   if (prompt !== undefined) {

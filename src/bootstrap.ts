@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { createComposedGate } from "./engine/approval/composed-gate.ts";
 import type { ApprovalGate } from "./engine/approval/gate.ts";
 import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
@@ -8,9 +7,10 @@ import { FakeLLM } from "./engine/llm/fake.ts";
 import { KimiLLM } from "./engine/llm/kimi.ts";
 import type { LLMRequester } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
+import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
 import { ToolExecutor } from "./engine/tools/executor.ts";
-import { WireService } from "./engine/wire.ts";
+import { Rebuilder, WireService, type RebuiltMessage } from "./engine/wire.ts";
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
 Your workspace is the current directory. \
@@ -24,6 +24,10 @@ export interface Agent {
   workspace: string;
   /** 生效的模型名（fake 模式为 "fake-llm"），供 UI 展示。 */
   model: string;
+  /** 当前会话的 wire 文件（#30：按工作区分目录、按会话分文件）。 */
+  sessionPath: string;
+  /** 冷重建的历史（UI 展示通道；上下文已进 loop）。新会话为空数组。 */
+  history: RebuiltMessage[];
 }
 
 export interface BootstrapOptions {
@@ -32,13 +36,37 @@ export interface BootstrapOptions {
   fake?: boolean;
   /** print 模式审批策略（#27）：给了才装配审批 gate；TUI 模式由 #28 装配自己的 gate。 */
   printApproval?: { yes: boolean };
+  /** 会话策略（#6）：continue = 继续工作区最近会话（TUI 用）；new/缺省 = 新会话（print 用）。 */
+  session?: "new" | "continue";
+  /** 测试缝：覆盖会话根目录（默认 ~/.mini-agent/sessions）。 */
+  sessionRoot?: string;
 }
 
 /** 组合根：显式装配 Engine 各部件。 */
 export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   const workspace = options.workspace;
   const bus = new EventBus();
-  const wire = new WireService(join(workspace, "wire.jsonl"));
+
+  // 会话文件（#30）：按工作区分目录；continue 复用最近会话并冷重建（#29）
+  const store = new SessionStore(options.sessionRoot ?? SessionStore.defaultRoot(), workspace);
+  let sessionPath: string;
+  let history: RebuiltMessage[] = [];
+  let contextMessages: ReturnType<Rebuilder["rebuildForContext"]> = [];
+  if (options.session === "continue") {
+    const latest = await store.latest();
+    if (latest !== undefined) {
+      sessionPath = latest;
+      const rows = await new WireService(latest).readAll();
+      const rebuilder = new Rebuilder();
+      history = rebuilder.rebuild(rows);
+      contextMessages = rebuilder.rebuildForContext(rows);
+    } else {
+      sessionPath = store.create();
+    }
+  } else {
+    sessionPath = store.create();
+  }
+  const wire = new WireService(sessionPath);
   const executor = new ToolExecutor();
   registerBuiltinTools(executor, workspace);
 
@@ -71,7 +99,10 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     systemPrompt: SYSTEM_PROMPT,
     ...(approvalGate ? { approvalGate } : {}),
   });
-  return { loop, bus, wire, workspace, model };
+  if (contextMessages.length > 0) {
+    loop.loadHistory(contextMessages);
+  }
+  return { loop, bus, wire, workspace, model, sessionPath, history };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

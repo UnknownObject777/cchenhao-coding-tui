@@ -15,10 +15,13 @@ import {
 } from "../../vendor/pi-tui/src/index.ts";
 import { TuiApprovalAnswerer } from "./approval/tui-answerer.ts";
 import { builtinCommands } from "./commands/builtins.ts";
-import { TOOL_FRAME_TOGGLE_KEY } from "./constant/symbols.ts";
 import { FooterComponent } from "./components/chrome/footer.ts";
 import { createLoader } from "./components/chrome/loader.ts";
 import { WelcomeComponent } from "./components/chrome/welcome.ts";
+import { AssistantMessageComponent } from "./components/messages/assistant-message.ts";
+import { ToolCallComponent } from "./components/messages/tool-call.ts";
+import { UserMessageComponent } from "./components/messages/user-message.ts";
+import { TOOL_FRAME_TOGGLE_KEY } from "./constant/symbols.ts";
 import { StreamingUiController } from "./controllers/streaming-ui.ts";
 import { TuiCoordinator } from "./coordinator.ts";
 import { detectTerminalTheme } from "./theme/detect.ts";
@@ -70,6 +73,21 @@ export function assembleTui(
   tui.addChild(new FooterComponent({ model: info.model, cwd: info.cwd }));
   tui.addChild(editor);
   tui.setFocus(editor);
+
+  // 会话恢复（#29）：冷重建的历史渲染成静态消息块（展示通道；上下文已在 bootstrap 进 loop）
+  for (const message of agent.history) {
+    if (message.role === "user") {
+      chat.addChild(new UserMessageComponent(message.text));
+    } else if (message.role === "assistant") {
+      const block = new AssistantMessageComponent();
+      block.updateContent(message.text);
+      chat.addChild(block);
+    } else {
+      const frame = new ToolCallComponent(message.name, message.args);
+      frame.setResult(message.ok, message.output);
+      chat.addChild(frame);
+    }
+  }
 
   const streamingUi = new StreamingUiController({
     bus: agent.bus,

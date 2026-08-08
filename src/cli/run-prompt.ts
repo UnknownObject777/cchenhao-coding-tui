@@ -1,5 +1,4 @@
 import type { Agent } from "../bootstrap.ts";
-import { Rebuilder } from "../engine/wire.ts";
 
 /**
  * print 模式驱动（类比 kimi-code 的 run-prompt.ts）：
@@ -7,12 +6,6 @@ import { Rebuilder } from "../engine/wire.ts";
  */
 export async function runPrompt(agent: Agent, prompt: string): Promise<number> {
   const { bus, loop } = agent;
-
-  // 冷重建：从 wire.jsonl 恢复历史（print 模式下只是提示，不进上下文）。
-  const history = new Rebuilder().rebuild(await agent.wire.readAll());
-  if (history.length > 0) {
-    process.stderr.write(`[wire] wire.jsonl 中有 ${history.length} 条历史消息（print 模式不回放进上下文）\n`);
-  }
 
   bus.on("assistant.delta", ({ text }) => process.stdout.write(text));
   bus.on("tool.call", ({ name, args }) => {

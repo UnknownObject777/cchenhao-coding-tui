@@ -35,14 +35,14 @@ describe("print-mode approval through bootstrap (#27)", () => {
   });
 
   it("without --yes the fake demo's write_file is denied and nothing lands on disk", async () => {
-    const agent = await bootstrap({ workspace: dir, fake: true, printApproval: { yes: false } });
+    const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir, printApproval: { yes: false } });
     await agent.loop.runTurn("demo");
 
     expect(existsSync(join(dir, "hello.txt"))).toBe(false);
   });
 
   it("with --yes the demo turn completes end to end", async () => {
-    const agent = await bootstrap({ workspace: dir, fake: true, printApproval: { yes: true } });
+    const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir, printApproval: { yes: true } });
     await agent.loop.runTurn("demo");
 
     expect(existsSync(join(dir, "hello.txt"))).toBe(true);
