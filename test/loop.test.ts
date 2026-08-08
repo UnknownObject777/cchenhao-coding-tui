@@ -70,7 +70,8 @@ describe("loop", () => {
 
     await loop.runTurn("what is in a.txt?");
 
-    expect(events.map((e) => e.type)).toEqual([
+    const kinds = events.filter((e) => e.type !== "context.usage");
+    expect(kinds.map((e) => e.type)).toEqual([
       "turn.started",
       "assistant.delta",
       "tool.call",
@@ -78,21 +79,21 @@ describe("loop", () => {
       "assistant.delta",
       "turn.ended",
     ]);
-    expect(events[1]).toEqual({ type: "assistant.delta", text: "Let me look. " });
-    expect(events[2]).toEqual({
+    expect(kinds[1]).toEqual({ type: "assistant.delta", text: "Let me look. " });
+    expect(kinds[2]).toEqual({
       type: "tool.call",
       id: "c1",
       name: "read_file",
       args: { path: "a.txt" },
     });
-    expect(events[3]).toEqual({
+    expect(kinds[3]).toEqual({
       type: "tool.result",
       id: "c1",
       name: "read_file",
       ok: true,
       output: "contents of a.txt",
     });
-    expect(events[5]).toEqual({ type: "turn.ended", turnId: 1, reason: "finish" });
+    expect(kinds[5]).toEqual({ type: "turn.ended", turnId: 1, reason: "finish" });
   });
 
   it("feeds the tool result back into the next llm request", async () => {
@@ -153,7 +154,8 @@ describe("loop", () => {
 
     await loop.runTurn("read a.txt");
 
-    expect(events.map((e) => e.type)).toEqual([
+    const kinds = events.filter((e) => e.type !== "context.usage");
+    expect(kinds.map((e) => e.type)).toEqual([
       "turn.started",
       "tool.call",
       "tool.result",
@@ -210,7 +212,8 @@ describe("loop", () => {
 
     await loop.runTurn("read secret.txt");
 
-    expect(events.map((e) => e.type)).toEqual([
+    const kinds = events.filter((e) => e.type !== "context.usage");
+    expect(kinds.map((e) => e.type)).toEqual([
       "turn.started",
       "tool.call",
       "approval.decision",
@@ -218,8 +221,8 @@ describe("loop", () => {
       "assistant.delta",
       "turn.ended",
     ]);
-    expect(events[2]).toEqual({ type: "approval.decision", id: "c1", decision: "deny" });
-    expect(events[3]).toMatchObject({ type: "tool.result", id: "c1", ok: false });
+    expect(kinds[2]).toEqual({ type: "approval.decision", id: "c1", decision: "deny" });
+    expect(kinds[3]).toMatchObject({ type: "tool.result", id: "c1", ok: false });
     // 拒绝结果回灌进下一轮请求（协议要求每个 tool_call 都有 tool 回复）
     const toolMessage = llm.requests[1]!.find((m) => m.role === "tool");
     expect(toolMessage).toMatchObject({ role: "tool", toolCallId: "c1" });
