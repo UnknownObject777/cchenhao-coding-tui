@@ -1,14 +1,13 @@
 /**
  * 分级规则引擎（#25，#5 决策第 3 条）：表驱动、纯函数、不放 UI。
  * allow = 自动放行；confirm = 必须问一次；deny = 强制拒绝（--yes 也不放行，#27）。
+ * 工具分类（read/write/command）由 ToolDefinition.approval 自声明传入，本模块不维护工具名清单。
  */
-import { resolve, sep } from "node:path";
+import { isInsideWorkspace } from "../tools/workspace.ts";
+import type { ToolApprovalKind } from "../tools/executor.ts";
 import type { ApprovalCall } from "./gate.ts";
 
 export type RuleLevel = "allow" | "confirm" | "deny";
-
-/** 只读工具：自动放行。 */
-const READ_ONLY_TOOLS = new Set(["read_file", "list_files", "grep", "glob", "web_search", "web_fetch"]);
 
 /** run_command 无害 pattern（命中即放行）：只读/构建/测试类。 */
 const SAFE_COMMAND_PATTERNS: RegExp[] = [
@@ -27,30 +26,27 @@ const DANGEROUS_COMMAND_PATTERNS: RegExp[] = [
   /\bformat\s+[a-z]:/i,
 ];
 
-/** 写文件工具：路径必须在工作区内，否则 deny。 */
-const WRITE_TOOLS = new Set(["write_file"]);
+export function classifyCall(
+  call: ApprovalCall,
+  workspace: string,
+  kind: ToolApprovalKind | undefined,
+): RuleLevel {
+  if (kind === "read") return "allow";
 
-function isInsideWorkspace(workspace: string, path: string): boolean {
-  const root = resolve(workspace);
-  const full = resolve(root, path);
-  return full === root || full.startsWith(root + sep);
-}
-
-export function classifyCall(call: ApprovalCall, workspace: string): RuleLevel {
-  if (READ_ONLY_TOOLS.has(call.name)) return "allow";
-
-  if (WRITE_TOOLS.has(call.name)) {
+  if (kind === "write") {
+    // 写工具约定首参为 path：路径必须在工作区内，否则 deny
     const path = typeof call.args["path"] === "string" ? call.args["path"] : undefined;
     if (path === undefined || !isInsideWorkspace(workspace, path)) return "deny";
     return "confirm";
   }
 
-  if (call.name === "run_command") {
+  if (kind === "command") {
     const command = typeof call.args["command"] === "string" ? call.args["command"].trim() : "";
     if (DANGEROUS_COMMAND_PATTERNS.some((p) => p.test(command))) return "deny";
     if (SAFE_COMMAND_PATTERNS.some((p) => p.test(command))) return "allow";
     return "confirm";
   }
 
+  // 未注册/未声明分类的工具：按 confirm 处理（安全缺省，不静默放行）
   return "confirm";
 }

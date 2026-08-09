@@ -1,6 +1,6 @@
 /**
- * 消息块共用布局：首行 bullet、余行等宽缩进、逐行按视口截断。
- * 三个消息块组件（user/assistant/tool-call）共用，改动布局只动这里。
+ * 消息块共用布局与小工具：首行 bullet、余行等宽缩进、逐行按视口截断、参数摘要。
+ * 消息块组件（user/assistant/tool-call/approval-frame）共用，改动只动这里。
  */
 import { truncateToWidth, visibleWidth } from "../../../../vendor/pi-tui/src/index.ts";
 
@@ -15,4 +15,15 @@ export function layOutBlock(width: number, bullet: string, contentLines: string[
 /** bullet 的可见宽度（供内容折行计算）。 */
 export function bulletWidth(bullet: string): number {
   return visibleWidth(bullet);
+}
+
+/** header 参数摘要的最大字符数。 */
+const MAX_ARG_SUMMARY_LENGTH = 60;
+
+/** 取第一个字符串参数当摘要（path/command/content 都是首个）；无字符串参数则不显示。 */
+export function summarizeArgs(args: Record<string, unknown>): string {
+  const firstString = Object.values(args).find((v) => typeof v === "string") as string | undefined;
+  if (firstString === undefined) return "";
+  const oneLine = firstString.replace(/\s+/g, " ").trim();
+  return oneLine.length > MAX_ARG_SUMMARY_LENGTH ? oneLine.slice(0, MAX_ARG_SUMMARY_LENGTH) + "…" : oneLine;
 }

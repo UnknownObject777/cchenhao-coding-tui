@@ -16,6 +16,8 @@ export interface EngineEvents {
     name: string;
     args: Record<string, unknown>;
     level: "confirm" | "deny";
+    /** #62 写调用预览：写入前的 unified-ish 变更 diff（读得到旧内容才有；新文件无预览）。 */
+    diff?: string;
   };
   /** 审批结论。由 Loop 在 gate 返回后发布。 */
   "approval.decision": { id: string; decision: "allow" | "always" | "deny" };

@@ -8,6 +8,7 @@ import { FakeLLM } from "./engine/llm/fake.ts";
 import type { LLMRequester, Message } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
 import { describeConfigSources, loadEffectiveConfig, resolveSystemPrompt } from "./engine/config.ts";
+import { detectGitDirty } from "./engine/git.ts";
 import { SessionStore } from "./engine/session.ts";
 import { discoverSkills, formatSkillList, registerSkillTool, type Skill } from "./engine/skills.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
@@ -158,6 +159,15 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   });
   if (contextMessages.length > 0) {
     loop.loadHistory(contextMessages);
+  }
+  // git 感知（#62）：会话开始探测一次脏状态，脏则一句提醒进上下文（TUI/print 两模式通用；
+  // 非 git 仓库/探测失败静默跳过）。提醒是纯上下文消息，不进 wire、不弹 UI 帧。
+  const dirty = await detectGitDirty(workspace);
+  if (dirty !== undefined) {
+    loop.injectContext(
+      `[workspace] the working tree has ${dirty.count} uncommitted change(s) — treat them as in-flight work ` +
+        `and avoid overwriting them (prefer edit_file; re-read before write_file).`,
+    );
   }
   return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt, skills, todos };
 }

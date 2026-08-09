@@ -3,6 +3,8 @@
  * 应答源由装配侧给：TUI 问用户（#28）、print 看 --yes（#27）。
  */
 import type { EventBus } from "../events.ts";
+import type { ToolApprovalKind } from "../tools/executor.ts";
+import { computeWritePreview } from "../tools/diff.ts";
 import type { WireRow } from "../wire.ts";
 import { publishApprovalRequest, type ApprovalCall, type ApprovalDecision, type ApprovalGate } from "./gate.ts";
 import { classifyCall } from "./rules.ts";
@@ -16,6 +18,8 @@ export interface ComposedGateDeps {
   bus: EventBus;
   workspace: string;
   answerer: ApprovalAnswerer;
+  /** 工具自声明的审批分类查询（ToolExecutor.approvalKind）；工具目录的单一事实来源。 */
+  approvalKind: (name: string) => ToolApprovalKind | undefined;
   /** 会话恢复时回灌的「始终允许」记忆（#29：从 wire 的 approval.* 事件还原）。 */
   remembered?: ReadonlySet<string>;
 }
@@ -47,12 +51,24 @@ export function memoryKey(call: ApprovalCall): string {
   return `${call.name}:${head}`;
 }
 
+/** 给写调用附加写前 diff 预览；非写调用或读不到旧内容时原样返回（预览是尽力而为，失败不影响审批）。 */
+async function attachWriteDiff(
+  call: ApprovalCall,
+  workspace: string,
+  kind: ToolApprovalKind | undefined,
+): Promise<ApprovalCall> {
+  if (kind !== "write") return call;
+  const diff = await computeWritePreview(call, workspace);
+  return diff === undefined ? call : { ...call, diff };
+}
+
 export function createComposedGate(deps: ComposedGateDeps): ApprovalGate {
   const remembered = new Set<string>(deps.remembered);
 
   return {
     async request(call: ApprovalCall): Promise<ApprovalDecision> {
-      const level = classifyCall(call, deps.workspace);
+      const kind = deps.approvalKind(call.name);
+      const level = classifyCall(call, deps.workspace, kind);
       if (level === "allow") return "allow";
       if (level === "deny") {
         publishApprovalRequest(deps.bus, call, "deny");
@@ -60,8 +76,11 @@ export function createComposedGate(deps: ComposedGateDeps): ApprovalGate {
       }
       if (remembered.has(memoryKey(call))) return "allow";
 
-      publishApprovalRequest(deps.bus, call, "confirm");
-      const decision = await deps.answerer.ask(call);
+      // diff 预览（#62）：confirm 级写调用在真发问前投影变更，随同一次 call 交给
+      // 应答源（TUI 帧渲染）与 approval.request 事件（stream-json 管道可消费）。
+      const preview = await attachWriteDiff(call, deps.workspace, kind);
+      publishApprovalRequest(deps.bus, preview, "confirm");
+      const decision = await deps.answerer.ask(preview);
       if (decision === "always") remembered.add(memoryKey(call));
       return decision;
     },

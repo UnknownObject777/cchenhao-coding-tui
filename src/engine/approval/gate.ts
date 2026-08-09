@@ -12,7 +12,8 @@ import type { ToolCall } from "../llm/types.ts";
  */
 export type ApprovalDecision = "allow" | "always" | "deny";
 
-export type ApprovalCall = ToolCall;
+/** #62：gate 组合体可在确认前把写调用投影成 diff，随 call 一起交给应答源与 approval.request 事件。 */
+export type ApprovalCall = ToolCall & { diff?: string };
 
 export interface ApprovalGate {
   /**
@@ -29,7 +30,13 @@ export function publishApprovalRequest(
   call: ApprovalCall,
   level: "confirm" | "deny",
 ): void {
-  bus.emit("approval.request", { id: call.id, name: call.name, args: call.args, level });
+  bus.emit("approval.request", {
+    id: call.id,
+    name: call.name,
+    args: call.args,
+    level,
+    ...(call.diff !== undefined ? { diff: call.diff } : {}),
+  });
 }
 
 /** 默认 gate：全放行（现状保持；未装配审批时使用）。 */

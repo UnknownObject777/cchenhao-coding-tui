@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EventBus } from "../src/engine/events.ts";
 import { createComposedGate, memoryKey } from "../src/engine/approval/composed-gate.ts";
 import type { EngineEvent } from "../src/engine/events.ts";
+import type { ToolApprovalKind } from "../src/engine/tools/executor.ts";
 
 const WS = "D:/proj";
 
@@ -10,7 +11,13 @@ function setup(answer: "allow" | "always" | "deny" = "allow") {
   const events: EngineEvent[] = [];
   bus.on("approval.request", (p) => events.push({ type: "approval.request", ...p }));
   const ask = vi.fn<(call: unknown) => Promise<"allow" | "always" | "deny">>().mockResolvedValue(answer);
-  const gate = createComposedGate({ bus, workspace: WS, answerer: { ask } });
+  const kinds: Record<string, ToolApprovalKind> = {
+    read_file: "read",
+    write_file: "write",
+    run_command: "command",
+  };
+  const approvalKind = (name: string): ToolApprovalKind | undefined => kinds[name];
+  const gate = createComposedGate({ bus, workspace: WS, answerer: { ask }, approvalKind });
   return { bus, events, ask, gate };
 }
 
