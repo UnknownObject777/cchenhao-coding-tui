@@ -1,32 +1,19 @@
+/**
+ * kimi-code 订阅 OAuth 兜底凭证（#55 拆分）：
+ * 通用凭证合并（env + 双级配置）与 provider 分派在 factory.ts；本文件只保留
+ * 「kimi 订阅 OAuth」这一个可选 fallback，其它 provider 无此兜底。
+ * OAuth access_token 有效期约 15 分钟，过期时提示用户先跑一次 `kimi` 刷新（玩具不做自动刷新）。
+ */
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export interface KimiCredentials {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-}
-
-const DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1";
-const DEFAULT_MODEL = "kimi-for-coding";
-const OAUTH_FILE = join(homedir(), ".kimi-code", "credentials", "kimi-code.json");
-
-/**
- * 凭证优先级（#38/#9）：env（KIMI_API_KEY）> 配置文件合并值（项目级 > 用户级）> kimi-code 订阅 OAuth。
- * OAuth access_token 有效期约 15 分钟，过期时提示用户先跑一次 `kimi` 刷新（玩具不做自动刷新）。
- */
-export async function resolveKimiCredentials(config: Partial<KimiCredentials> = {}): Promise<KimiCredentials> {
-  const baseUrl = process.env["KIMI_BASE_URL"] ?? config.baseUrl ?? DEFAULT_BASE_URL;
-  const model = process.env["KIMI_MODEL"] ?? config.model ?? DEFAULT_MODEL;
-
-  const envKey = process.env["KIMI_API_KEY"];
-  if (envKey) return { apiKey: envKey, baseUrl, model };
-  if (config.apiKey !== undefined) return { apiKey: config.apiKey, baseUrl, model };
-
+/** 读取 kimi-code 订阅 OAuth token；读不到或已过期时抛错并给出可操作提示。 */
+export async function readKimiOAuthToken(home: string = homedir()): Promise<string> {
+  const oauthFile = join(home, ".kimi-code", "credentials", "kimi-code.json");
   let raw: string;
   try {
-    raw = await readFile(OAUTH_FILE, "utf8");
+    raw = await readFile(oauthFile, "utf8");
   } catch {
     throw new Error(
       "未找到 KIMI_API_KEY，也没有 kimi-code 订阅凭证。请设置 KIMI_API_KEY，或先运行 `kimi` 登录订阅。",
@@ -34,10 +21,10 @@ export async function resolveKimiCredentials(config: Partial<KimiCredentials> = 
   }
   const token = JSON.parse(raw) as { access_token?: string; expires_at?: number };
   if (!token.access_token) {
-    throw new Error(`订阅凭证文件缺少 access_token: ${OAUTH_FILE}`);
+    throw new Error(`订阅凭证文件缺少 access_token: ${oauthFile}`);
   }
   if (typeof token.expires_at === "number" && token.expires_at * 1000 < Date.now() + 30_000) {
     throw new Error("kimi-code 订阅 token 已过期，请先运行一次 `kimi` 刷新登录态，或改用 KIMI_API_KEY。");
   }
-  return { apiKey: token.access_token, baseUrl, model };
+  return token.access_token;
 }

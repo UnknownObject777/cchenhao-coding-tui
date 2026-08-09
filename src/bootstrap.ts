@@ -2,17 +2,16 @@ import { createComposedGate, alwaysMemoryFrom } from "./engine/approval/composed
 import type { ApprovalGate } from "./engine/approval/gate.ts";
 import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
 import { EventBus } from "./engine/events.ts";
-import { resolveKimiCredentials } from "./engine/llm/credentials.ts";
+import { createLLM } from "./engine/llm/factory.ts";
 import { FakeLLM } from "./engine/llm/fake.ts";
-import { KimiLLM } from "./engine/llm/kimi.ts";
 import type { LLMRequester, Message } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
 import { describeConfigSources, loadEffectiveConfig, resolveSystemPrompt } from "./engine/config.ts";
 import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
-import { ToolExecutor } from "./engine/tools/executor.ts";
+import { ToolExecutor, type ToolApprovalKind } from "./engine/tools/executor.ts";
 import { registerWebTools } from "./engine/tools/web.ts";
-import { Rebuilder, WireService, type RebuiltMessage } from "./engine/wire.ts";
+import { Rebuilder, WireEventSink, WireService, type RebuiltMessage } from "./engine/wire.ts";
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
 Your workspace is the current directory. \
@@ -24,6 +23,8 @@ export interface Agent {
   bus: EventBus;
   wire: WireService;
   workspace: string;
+  /** 工具自声明的审批分类查询（TUI 装配 gate 时用；executor 的窄投影）。 */
+  approvalKind: (name: string) => ToolApprovalKind | undefined;
   /** 生效的模型名（fake 模式为 "fake-llm"），供 UI 展示。 */
   model: string;
   /** 当前会话的 wire 文件（#30：按工作区分目录、按会话分文件）。 */
@@ -79,6 +80,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     sessionPath = store.createPath(options.printApproval ? "print" : "chat");
   }
   const wire = new WireService(sessionPath);
+  const sink = new WireEventSink(wire);
   const executor = new ToolExecutor();
   registerBuiltinTools(executor, workspace);
 
@@ -94,14 +96,15 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     llm = demoScript();
     model = "fake-llm";
   } else {
-    const credentials = await resolveKimiCredentials(config);
-    llm = new KimiLLM(credentials);
-    model = credentials.model;
-    // web 工具复用同一份订阅凭证（#3：search/fetch 与 LLM 共用 baseUrl + Bearer）
-    registerWebTools(executor, { apiKey: credentials.apiKey, baseUrl: credentials.baseUrl });
-    // 生效来源打印（脱敏：只打字段与来源，不打值）
+    const built = await createLLM(config);
+    llm = built.llm;
+    model = built.model;
+    // web 工具复用 LLM 凭证（#3：search/fetch 与 LLM 共用 baseUrl + Bearer）；经 BuiltLLM 显式出口传递
+    registerWebTools(executor, built.webCredentials!);
+    // 生效来源打印（脱敏：只打字段与来源，不打值）；apiKey 兜底来源名按 provider 参数化
+    const apiKeyFallback = built.provider === "kimi" ? "kimi-code 订阅 OAuth" : "无（未配置 api_key）";
     process.stderr.write(
-      `[config]\n${describeConfigSources(config, "kimi-code 订阅 OAuth")}\n  systemPrompt ← ${promptSource}\n`,
+      `[config]\n${describeConfigSources(config, apiKeyFallback)}\n  systemPrompt ← ${promptSource}\n`,
     );
   }
 
@@ -112,6 +115,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
         answerer: createPrintAnswerer(options.printApproval.yes, (message) =>
           process.stderr.write(`${message}\n`),
         ),
+        approvalKind: (name) => executor.approvalKind(name),
       })
     : undefined;
 
@@ -119,14 +123,14 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     llm,
     executor,
     bus,
-    wire,
+    sink,
     systemPrompt,
     ...(approvalGate ? { approvalGate } : {}),
   });
   if (contextMessages.length > 0) {
     loop.loadHistory(contextMessages);
   }
-  return { loop, bus, wire, workspace, model, sessionPath, history, approvalMemory, systemPrompt };
+  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

@@ -5,6 +5,7 @@ export interface ChatChunk {
   choices?: Array<{
     delta?: {
       content?: string | null;
+      /** kimi/DeepSeek 系扩展字段，不在 OpenAI 标准内；缺省即无 think 事件，宽容读取。 */
       reasoning_content?: string | null;
       tool_calls?: Array<{
         index: number;
@@ -26,6 +27,35 @@ export function parseSseData(raw: string): string[] {
     if (data !== "" && data !== "[DONE]") payloads.push(data);
   }
   return payloads;
+}
+
+/**
+ * SSE 行分帧器：把任意边界的 chunk 文本切成完整行。
+ * 被 read() 切在中间的断行缓冲在内部，flush() 交出结尾无换行的尾巴。
+ */
+export class SseLineSplitter {
+  private buffer = "";
+
+  /** 喂入一段文本，返回其中的完整行；不完整的尾巴留在内部。 */
+  push(text: string): string[] {
+    this.buffer += text;
+    const lines: string[] = [];
+    let newline = this.buffer.indexOf("\n");
+    while (newline >= 0) {
+      lines.push(this.buffer.slice(0, newline + 1));
+      this.buffer = this.buffer.slice(newline + 1);
+      newline = this.buffer.indexOf("\n");
+    }
+    return lines;
+  }
+
+  /** 流收尾：返回未以换行结尾的残余（无残余返回空数组）。 */
+  flush(): string[] {
+    if (this.buffer === "") return [];
+    const tail = this.buffer;
+    this.buffer = "";
+    return [tail];
+  }
 }
 
 interface PendingToolCall {
