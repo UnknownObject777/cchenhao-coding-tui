@@ -8,6 +8,8 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 export interface AgentConfigFile {
+  /** provider 名："kimi"（默认）｜"openai"｜任意 OpenAI 兼容端点名（需显式 base_url/model）。 */
+  provider?: string;
   api_key?: string;
   base_url?: string;
   model?: string;
@@ -15,6 +17,7 @@ export interface AgentConfigFile {
 }
 
 export interface EffectiveConfig {
+  provider?: string;
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -24,10 +27,11 @@ export interface EffectiveConfig {
   sources: Record<string, string>;
 }
 
-const ENV_KEYS: Record<string, string> = {
-  apiKey: "KIMI_API_KEY",
-  baseUrl: "KIMI_BASE_URL",
-  model: "KIMI_MODEL",
+/** 每字段的 env 键表：KIMI_*（向后兼容）优先，OPENAI_* 作为通用别名兜底。 */
+const ENV_KEYS: Record<string, [string, string]> = {
+  apiKey: ["KIMI_API_KEY", "OPENAI_API_KEY"],
+  baseUrl: ["KIMI_BASE_URL", "OPENAI_BASE_URL"],
+  model: ["KIMI_MODEL", "OPENAI_MODEL"],
 };
 
 async function readConfigFile(path: string): Promise<AgentConfigFile | undefined> {
@@ -59,6 +63,10 @@ export async function loadEffectiveConfig(workspace: string, home: string = home
   ];
   for (const { file, label, baseDir } of layers) {
     if (file === undefined) continue;
+    if (file.provider !== undefined) {
+      result.provider = file.provider;
+      result.sources["provider"] = label;
+    }
     if (file.api_key !== undefined) {
       result.apiKey = file.api_key;
       result.sources["apiKey"] = label;
@@ -79,11 +87,18 @@ export async function loadEffectiveConfig(workspace: string, home: string = home
     }
   }
 
-  for (const [field, envName] of Object.entries(ENV_KEYS)) {
-    const value = process.env[envName];
-    if (value !== undefined && value !== "") {
+  for (const [field, envNames] of Object.entries(ENV_KEYS)) {
+    for (const envName of envNames) {
+      const value = process.env[envName];
+      if (value === undefined || value === "") continue;
       (result as unknown as Record<string, string>)[field] = value;
       result.sources[field] = `env:${envName}`;
+      // 命中 OPENAI_* 且未显式配置 provider → 推断为 openai（否则默认 kimi）
+      if (result.provider === undefined && envName.startsWith("OPENAI_")) {
+        result.provider = "openai";
+        result.sources["provider"] = "env:OPENAI_*（推断）";
+      }
+      break;
     }
   }
   return result;
@@ -117,7 +132,7 @@ export async function resolveSystemPrompt(
 
 /** 生效来源的脱敏打印（stderr；只打字段与来源，不打值）。 */
 export function describeConfigSources(config: EffectiveConfig, apiKeyFallback: string): string {
-  const fields: Array<keyof EffectiveConfig & string> = ["apiKey", "baseUrl", "model", "systemPromptFile"];
+  const fields: Array<keyof EffectiveConfig & string> = ["provider", "apiKey", "baseUrl", "model", "systemPromptFile"];
   return fields
     .map((field) => {
       const source =

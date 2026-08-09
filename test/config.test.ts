@@ -20,6 +20,8 @@ describe("loadEffectiveConfig (#38)", () => {
     rmSync(home, { recursive: true, force: true });
     rmSync(ws, { recursive: true, force: true });
     delete process.env["KIMI_MODEL"];
+    delete process.env["OPENAI_MODEL"];
+    delete process.env["OPENAI_API_KEY"];
   });
 
   it("returns empty config when no files exist", async () => {
@@ -66,6 +68,36 @@ describe("loadEffectiveConfig (#38)", () => {
     const text = describeConfigSources(config, "kimi-code 订阅 OAuth");
     expect(text).toContain("apiKey ← user:config.json");
     expect(text).not.toContain("secret-key-123");
+  });
+
+  it("provider 字段来自配置文件并记录来源", async () => {
+    await writeFile(join(ws, ".agent.json"), JSON.stringify({ provider: "openai" }));
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.provider).toBe("openai");
+    expect(config.sources["provider"]).toBe("project:.agent.json");
+  });
+
+  it("OPENAI_* env 生效、推断 provider=openai；KIMI_* 优先", async () => {
+    process.env["OPENAI_MODEL"] = "gpt-4o";
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.model).toBe("gpt-4o");
+    expect(config.sources["model"]).toBe("env:OPENAI_MODEL");
+    expect(config.provider).toBe("openai"); // 命中 OPENAI_* 且未显式配置 → 推断
+    expect(config.sources["provider"]).toContain("OPENAI_");
+
+    process.env["KIMI_MODEL"] = "kimi-env";
+    const config2 = await loadEffectiveConfig(ws, home);
+    expect(config2.model).toBe("kimi-env"); // KIMI_* 优先于 OPENAI_*
+    expect(config2.sources["model"]).toBe("env:KIMI_MODEL");
+  });
+
+  it("显式 provider 不被 OPENAI_* env 覆盖", async () => {
+    await writeFile(join(ws, ".agent.json"), JSON.stringify({ provider: "kimi" }));
+    process.env["OPENAI_MODEL"] = "gpt-4o";
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.provider).toBe("kimi");
+    expect(config.model).toBe("gpt-4o");
+    expect(config.sources["model"]).toBe("env:OPENAI_MODEL");
   });
 });
 
