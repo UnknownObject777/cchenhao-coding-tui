@@ -1,13 +1,13 @@
 import type { ApprovalGate } from "./approval/gate.ts";
 import {
+  COMPACT_HIGH_WATER,
+  COMPACT_LOW_WATER,
   COMPACT_TAIL_FRACTION,
   CONTEXT_TOKEN_BUDGET,
   estimateTokens,
   splitForCompaction,
   SUMMARIZATION_SYSTEM_PROMPT,
   summaryMessage,
-  TRUNCATE_HIGH_WATER,
-  TRUNCATE_LOW_WATER,
   truncateToWindow,
 } from "./context.ts";
 import type { EventBus, EngineEvent, EngineEventName, EngineEvents } from "./events.ts";
@@ -24,7 +24,7 @@ export interface LoopOptions {
   sink?: EventSink;
   /** 审批缝（#5）：tool.call 发布后、执行前 await；缺省不审批。 */
   approvalGate?: ApprovalGate;
-  /** 上下文 token 预算（#31）；缺省 256K（kimi-for-coding）。 */
+  /** 上下文 token 预算（#31）；缺省 CONTEXT_TOKEN_BUDGET（256K，可经配置 context_budget 覆盖，#57）。 */
   contextTokenBudget?: number;
   /** 单个 turn 内 LLM 往返的最大轮数（防 tool call 死循环）。 */
   maxRounds?: number;
@@ -184,27 +184,32 @@ export class Loop {
   private async enforceContextWindow(): Promise<void> {
     const budget = this.contextTokenBudget;
     let estimated = estimateTokens(this.messages);
-    if (estimated > budget * TRUNCATE_HIGH_WATER) {
-      // compaction 语义覆盖截断（丢旧 + 保近 + 旧上下文留摘要），摘要失败才走截断兜底
-      const compacted = await this.compactContext().catch(() => false);
-      estimated = estimateTokens(this.messages);
-      if (compacted && estimated > budget * TRUNCATE_HIGH_WATER) {
-        // 熔断：压缩后立即回满（如单条巨型消息），不再烧第二次摘要调用
-        throw new Error(
-          `context overflow: ~${estimated} tokens exceeds budget ${budget} even after compaction; use /clear to start fresh`,
-        );
-      }
-      if (!compacted && estimated > budget * TRUNCATE_HIGH_WATER) {
-        this.messages = truncateToWindow(this.messages, Math.floor(budget * TRUNCATE_LOW_WATER));
-        estimated = estimateTokens(this.messages);
-        if (estimated > budget * TRUNCATE_HIGH_WATER) {
-          throw new Error(
-            `context overflow: ~${estimated} tokens exceeds budget ${budget} even after truncation; use /clear to start fresh`,
-          );
-        }
-      }
+    if (estimated <= budget * COMPACT_HIGH_WATER) {
+      this.publishUsage();
+      return;
     }
+    // compaction 语义覆盖截断（丢旧 + 保近 + 旧上下文留摘要），摘要失败才走截断兜底
+    const compacted = await this.compactContext().catch(() => false);
+    estimated = estimateTokens(this.messages);
+    if (compacted) {
+      // 熔断：压缩后立即回满（如单条巨型消息），不再烧第二次摘要调用
+      this.throwIfStillOverflowed(estimated, budget, "compaction");
+      this.publishUsage();
+      return;
+    }
+    this.messages = truncateToWindow(this.messages, Math.floor(budget * COMPACT_LOW_WATER));
+    estimated = estimateTokens(this.messages);
+    this.throwIfStillOverflowed(estimated, budget, "truncation");
     this.publishUsage();
+  }
+
+  /** 压缩/截断后仍超预算（如单条巨型消息）→ 抛错引导 /clear（#7 最后防线）。 */
+  private throwIfStillOverflowed(estimated: number, budget: number, mode: "compaction" | "truncation"): void {
+    if (estimated > budget * COMPACT_HIGH_WATER) {
+      throw new Error(
+        `context overflow: ~${estimated} tokens exceeds budget ${budget} even after ${mode}; use /clear to start fresh`,
+      );
+    }
   }
 
   /**

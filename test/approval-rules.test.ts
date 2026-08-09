@@ -85,6 +85,12 @@ describe("approval rules (classifyCall)", () => {
       expect(classify("write_file", { path: ".gitignore" })).toBe("confirm");
     });
 
+    it("denies nested .git paths, not only the top-level .git (#63)", () => {
+      expect(classify("write_file", { path: "vendor/x/.git/config" })).toBe("deny");
+      expect(classify("edit_file", { path: "sub/deep/.git/HEAD" })).toBe("deny");
+      expect(classify("write_file", { path: "sub/.git/config" })).toBe("deny");
+    });
+
     it("non-protected writes inside the workspace stay confirm", () => {
       expect(classify("write_file", { path: "src/a.ts" })).toBe("confirm");
     });

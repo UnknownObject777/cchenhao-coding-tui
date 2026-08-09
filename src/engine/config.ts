@@ -14,6 +14,8 @@ export interface AgentConfigFile {
   base_url?: string;
   model?: string;
   system_prompt_file?: string;
+  /** 上下文 token 预算覆盖（#57）；缺省 CONTEXT_TOKEN_BUDGET（256K）。非正数/非数字忽略。 */
+  context_budget?: number;
 }
 
 export interface EffectiveConfig {
@@ -23,6 +25,8 @@ export interface EffectiveConfig {
   model?: string;
   /** 解析成绝对路径的 system prompt 文件（#39）。 */
   systemPromptFile?: string;
+  /** 上下文 token 预算覆盖（#57）；未配置时 loop 用 CONTEXT_TOKEN_BUDGET 缺省。 */
+  contextBudget?: number;
   /** 字段 → 来源描述（如 "env:KIMI_MODEL"、"project:.agent.json"、"user:config.json"）。 */
   sources: Record<string, string>;
 }
@@ -85,6 +89,10 @@ export async function loadEffectiveConfig(workspace: string, home: string = home
         : resolve(baseDir, file.system_prompt_file);
       result.sources["systemPromptFile"] = label;
     }
+    if (typeof file.context_budget === "number" && Number.isFinite(file.context_budget) && file.context_budget > 0) {
+      result.contextBudget = file.context_budget;
+      result.sources["contextBudget"] = label;
+    }
   }
 
   for (const [field, envNames] of Object.entries(ENV_KEYS)) {
@@ -132,7 +140,14 @@ export async function resolveSystemPrompt(
 
 /** 生效来源的脱敏打印（stderr；只打字段与来源，不打值）。 */
 export function describeConfigSources(config: EffectiveConfig, apiKeyFallback: string): string {
-  const fields: Array<keyof EffectiveConfig & string> = ["provider", "apiKey", "baseUrl", "model", "systemPromptFile"];
+  const fields: Array<keyof EffectiveConfig & string> = [
+    "provider",
+    "apiKey",
+    "baseUrl",
+    "model",
+    "systemPromptFile",
+    "contextBudget",
+  ];
   return fields
     .map((field) => {
       const source =

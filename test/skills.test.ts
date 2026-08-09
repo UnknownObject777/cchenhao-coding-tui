@@ -122,6 +122,23 @@ describe("discoverSkills", () => {
     expect(skills[0]!.path).toContain(dirs.ws);
   });
 
+  it("dedups same-name skills inside one root deterministically (path-sorted, not readdir order) (#59)", async () => {
+    const root = join(dirs.ws, ".agents", "skills");
+    // 先建 a-dup 再建 z-dup：若按 readdir 顺序去重，胜者取决于目录项顺序，不可复现；
+    // 契约是 (name, path) 排序后取同名的路径最大者——无论目录创建/遍历顺序如何都稳定。
+    await mkdir(join(root, "a-dup"), { recursive: true });
+    await writeFile(join(root, "a-dup", "SKILL.md"), skillMd("shared", "a-dup body"));
+    await mkdir(join(root, "z-dup"), { recursive: true });
+    await writeFile(join(root, "z-dup", "SKILL.md"), skillMd("shared", "z-dup body"));
+
+    const skills = await discoverSkills(dirs.ws, dirs.home);
+    expect(skills).toHaveLength(1);
+    expect(skills[0]!.name).toBe("shared");
+    expect(skills[0]!.path).toContain("z-dup");
+    // 同一输入重复发现结果一致（确定性）
+    expect((await discoverSkills(dirs.ws, dirs.home))[0]!.path).toBe(skills[0]!.path);
+  });
+
   it("sorts the merged list by name", async () => {
     await mkdir(join(dirs.home, ".mini-agent", "skills", "beta"), { recursive: true });
     await writeFile(join(dirs.home, ".mini-agent", "skills", "beta", "SKILL.md"), skillMd("beta", "b"));

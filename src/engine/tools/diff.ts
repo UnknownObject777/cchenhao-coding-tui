@@ -14,6 +14,14 @@ const MAX_DIFF_CELLS = 250_000;
 /** 每个 hunk 的上下文行数。 */
 const CONTEXT_LINES = 3;
 
+/** hunk 内旧/新行数（unified diff 头行的 +/- 统计；创建与聚 hunks 两处共用）。 */
+function countLines(ops: DiffOp[]): { oldCount: number; newCount: number } {
+  return {
+    oldCount: ops.filter((op) => op.kind !== "+").length,
+    newCount: ops.filter((op) => op.kind !== "-").length,
+  };
+}
+
 type DiffOp = { kind: " " | "-" | "+"; text: string };
 
 /**
@@ -33,8 +41,7 @@ export function createUnifiedDiff(oldText: string, newText: string, label?: stri
     lines.push(`--- a/${label}`, `+++ b/${label}`);
   }
   for (const hunk of buildHunks(ops)) {
-    const oldCount = hunk.ops.filter((op) => op.kind !== "+").length;
-    const newCount = hunk.ops.filter((op) => op.kind !== "-").length;
+    const { oldCount, newCount } = countLines(hunk.ops);
     lines.push(`@@ -${hunk.oldStart},${oldCount} +${hunk.newStart},${newCount} @@`);
     for (const op of hunk.ops) lines.push(op.kind + op.text);
   }
@@ -161,8 +168,7 @@ function buildHunks(ops: DiffOp[]): Array<{ ops: DiffOp[]; oldStart: number; new
       if (ops[i]!.kind !== "+") oldBefore += 1;
       if (ops[i]!.kind !== "-") newBefore += 1;
     }
-    const oldCount = hunkOps.filter((op) => op.kind !== "+").length;
-    const newCount = hunkOps.filter((op) => op.kind !== "-").length;
+    const { oldCount, newCount } = countLines(hunkOps);
     return {
       ops: hunkOps,
       oldStart: oldCount === 0 ? oldBefore : oldBefore + 1,

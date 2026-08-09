@@ -41,20 +41,26 @@ const PROTECTED_PATH_SEGMENTS = [".git"];
 export const CRITICAL_WRITE_BASENAMES = ["package.json", "package-lock.json", "tsconfig.json", ".agent.md", "AGENTS.md"];
 export const CRITICAL_WRITE_SEGMENTS = [".github", ".agents"];
 
-/** 相对工作区解析后落在保护段内（.git/…）→ 禁止写。越界由 isInsideWorkspace 负责，本函数只处理区内路径。 */
-function isProtectedWritePath(workspace: string, path: string): boolean {
+/** 相对工作区路径（供区内/保护段判定；越界返回 "../…" 形态由调用方处理）。 */
+function workspaceRelative(workspace: string, path: string): string {
   const root = resolve(workspace);
-  const rel = relative(root, resolve(root, path)).toLowerCase();
+  return relative(root, resolve(root, path));
+}
+
+/**
+ * 相对工作区解析后任一路径段命中保护段（.git/…，含嵌套如 vendor/x/.git/）→ 禁止写。
+ * 越界由 isInsideWorkspace 负责，本函数只处理区内路径。
+ */
+function isProtectedWritePath(workspace: string, path: string): boolean {
+  const rel = workspaceRelative(workspace, path).toLowerCase();
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return false;
-  return PROTECTED_PATH_SEGMENTS.some((seg) => rel === seg || rel.startsWith(`${seg}${sep}`));
+  return PROTECTED_PATH_SEGMENTS.some((seg) => rel.split(sep).includes(seg));
 }
 
 /** 关键文件判定：basename 精确命中或首段命中（.github/…、.agents/…）。仅对工作区内路径有意义。 */
 export function isCriticalConfigPath(workspace: string, path: string): boolean {
   if (!isInsideWorkspace(workspace, path)) return false;
-  const root = resolve(workspace);
-  const rel = relative(root, resolve(root, path));
-  const segments = rel.split(sep);
+  const segments = workspaceRelative(workspace, path).split(sep);
   const base = segments[segments.length - 1] ?? "";
   const first = segments[0] ?? "";
   return CRITICAL_WRITE_BASENAMES.includes(base) || CRITICAL_WRITE_SEGMENTS.includes(first);

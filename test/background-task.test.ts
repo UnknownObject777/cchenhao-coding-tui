@@ -10,14 +10,15 @@ import {
   DEFAULT_BACKGROUND_TIMEOUT_MS,
   DEFAULT_COMMAND_TIMEOUT_MS,
   TaskManager,
+  taskIdFrom,
 } from "../src/engine/tools/task.ts";
 import { makeTempDir } from "./helpers/temp-dir.ts";
 
-/** 从 run_command 的返回里取出 task id（`task task-1 started ...`）。 */
+/** 从 run_command 的返回里取出 task id（`task task-1 started ...`）；复用实现的解析函数。 */
 function taskIdOf(output: string): string {
-  const m = output.match(/task (task-\d+) started/);
-  if (!m) throw new Error(`no task id in output: ${output}`);
-  return m[1]!;
+  const id = taskIdFrom(output);
+  if (id === undefined) throw new Error(`no task id in output: ${output}`);
+  return id;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

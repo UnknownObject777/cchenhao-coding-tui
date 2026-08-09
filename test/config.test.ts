@@ -99,6 +99,22 @@ describe("loadEffectiveConfig (#38)", () => {
     expect(config.model).toBe("gpt-4o");
     expect(config.sources["model"]).toBe("env:OPENAI_MODEL");
   });
+
+  it("loads context_budget from config, project wins over user (#57)", async () => {
+    await mkdir(join(home, ".mini-agent"), { recursive: true });
+    await writeFile(join(home, ".mini-agent", "config.json"), JSON.stringify({ context_budget: 128000 }));
+    await writeFile(join(ws, ".agent.json"), JSON.stringify({ context_budget: 64000 }));
+
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.contextBudget).toBe(64000);
+    expect(config.sources["contextBudget"]).toBe("project:.agent.json");
+  });
+
+  it("ignores a non-numeric context_budget (default stays in effect)", async () => {
+    await writeFile(join(ws, ".agent.json"), JSON.stringify({ context_budget: "lots" }));
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.contextBudget).toBeUndefined();
+  });
 });
 
 describe("system prompt override (#39)", () => {
@@ -141,5 +157,14 @@ describe("system prompt override (#39)", () => {
     const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir, homeDir: home });
     expect(agent.systemPrompt).toContain("todo");
     expect(agent.systemPrompt).toContain("in_progress");
+  });
+
+  it("project context_budget reaches the loop budget (#57)", async () => {
+    await writeFile(join(dir, ".agent.json"), JSON.stringify({ context_budget: 500 }));
+    const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir, homeDir: home });
+    const budgets: number[] = [];
+    agent.bus.on("context.usage", (p) => budgets.push(p.budgetTokens));
+    await agent.loop.runTurn("hi");
+    expect(budgets.at(-1)).toBe(500);
   });
 });

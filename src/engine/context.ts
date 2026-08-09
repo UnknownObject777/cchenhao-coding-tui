@@ -7,11 +7,12 @@
  */
 import type { Message } from "./llm/types.ts";
 
-/** kimi-for-coding 上下文 256K tokens。 */
+/** 默认上下文预算（kimi-for-coding 现状 256K tokens）；可经配置 context_budget 覆盖（config.ts）。不做 provider 自动换算表：换 provider 沿用此默认值，按需自行配置。 */
 export const CONTEXT_TOKEN_BUDGET = 256_000;
-/** 估算超过预算的 80% 触发截断/压缩，截到 60% 以下（#7）。 */
-export const TRUNCATE_HIGH_WATER = 0.8;
-export const TRUNCATE_LOW_WATER = 0.6;
+/** 估算超过预算的 80% 触发压缩/截断（#7）；#57 起高水位主要触发 compaction。 */
+export const COMPACT_HIGH_WATER = 0.8;
+/** 压缩/截断目标水位：降到预算的 60% 以下。 */
+export const COMPACT_LOW_WATER = 0.6;
 /** 压缩后保留尾部占预算的比例（#57）：摘要 + 尾部 = 压缩目标状态。 */
 export const COMPACT_TAIL_FRACTION = 0.2;
 /** 摘要消息的前缀标记（运行时与 wire 冷重建共用）。 */

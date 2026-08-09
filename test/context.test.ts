@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPACT_HIGH_WATER,
+  COMPACT_LOW_WATER,
   COMPACT_TAIL_FRACTION,
   CONTEXT_TOKEN_BUDGET,
   estimateTokens,
@@ -15,6 +17,13 @@ import { FakeLLM } from "../src/engine/llm/fake.ts";
 import type { Message } from "../src/engine/llm/types.ts";
 import { Loop } from "../src/engine/loop.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
+
+describe("water marks (#57 rename)", () => {
+  it("high/low water are 80%/60% of the budget", () => {
+    expect(COMPACT_HIGH_WATER).toBe(0.8);
+    expect(COMPACT_LOW_WATER).toBe(0.6);
+  });
+});
 
 describe("estimateTokens (#32)", () => {
   it("is chars/4 including tool call args", () => {

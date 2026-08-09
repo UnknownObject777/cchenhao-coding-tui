@@ -130,7 +130,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     llm = built.llm;
     model = built.model;
     // web 工具复用 LLM 凭证（#3：search/fetch 与 LLM 共用 baseUrl + Bearer）；经 BuiltLLM 显式出口传递
-    registerWebTools(executor, built.webCredentials!);
+    registerWebTools(executor, built.webCredentials);
     // 生效来源打印（脱敏：只打字段与来源，不打值）；apiKey 兜底来源名按 provider 参数化
     const apiKeyFallback = built.provider === "kimi" ? "kimi-code 订阅 OAuth" : "无（未配置 api_key）";
     process.stderr.write(
@@ -155,6 +155,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     bus,
     sink,
     systemPrompt,
+    ...(config.contextBudget !== undefined ? { contextTokenBudget: config.contextBudget } : {}),
     ...(approvalGate ? { approvalGate } : {}),
   });
   if (contextMessages.length > 0) {

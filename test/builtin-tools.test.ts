@@ -102,13 +102,15 @@ describe("builtin tools", () => {
     expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("y = 9;\ny = 9;\n");
   });
 
-  it("edit_file refuses to touch files outside the workspace", async () => {
+  it("edit_file path escaping the workspace points the model to write_file (#56)", async () => {
     const result = await executor.execute("edit_file", {
       path: "../escape.txt",
       old_string: "a",
       new_string: "b",
     });
     expect(result.ok).toBe(false);
+    expect(result.output).toContain("escapes workspace");
+    expect(result.output).toContain("write_file"); // 降级指引：改经工作区内路径用 write_file
   });
 
   it("edit_file rejects an empty old_string", async () => {

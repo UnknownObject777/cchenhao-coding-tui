@@ -84,7 +84,16 @@ export function registerBuiltinTools(
       required: ["path", "old_string", "new_string"],
     },
     execute: async (args) => {
-      const full = resolveInside(String(args["path"]));
+      let full: string;
+      try {
+        full = resolveInside(String(args["path"]));
+      } catch (error) {
+        // #56：路径逃逸与「文件缺失」同款可行动错误——模型应改用工作区内的路径（可用 write_file 重写）
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}: edit_file only edits files inside the workspace; ` +
+            `use write_file with a workspace-relative path instead`,
+        );
+      }
       const oldText = String(args["old_string"]);
       const newText = String(args["new_string"]);
       if (oldText === "") {

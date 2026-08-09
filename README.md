@@ -93,7 +93,7 @@ CI：GitHub Actions 三平台矩阵（Windows / Linux / macOS），typecheck + �
 | `src/engine/events.ts` | `packages/transcript`（事件契约与回放） | EventBus + 领域事件（引擎↔UI 唯一通道） |
 | `src/engine/wire.ts` | session transcript / wire 日志 | append-only 事件落盘（EventSink 保序 + 失败告警容错）+ Rebuilder 双通道冷重建 |
 | `src/engine/session.ts` | session storage | 会话按工作区分文件 |
-| `src/engine/context.ts` | context window / compaction | 滑动窗口截断（玩具无真压缩） |
+| `src/engine/context.ts` | context window / compaction | 预算高水位触发真压缩（LLM 摘要 + 保留尾部，#57），摘要失败退化为滑动窗口截断 |
 | `src/engine/approval/` | permission/approval 规则引擎 | 分级规则 + 会话记忆 + 应答源组合 |
 | `src/engine/tools/` | `agent-core/src/tools/` | 内置工具 + 统一输出护栏 |
 | `src/tui/app.ts` | `kimi-tui.ts` 装配段 | 组合根：组件树上树 + 控制器接线 |

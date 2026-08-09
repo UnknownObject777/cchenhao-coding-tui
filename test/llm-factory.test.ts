@@ -18,7 +18,7 @@ describe("createLLM 工厂（#55 provider 泛化）", () => {
     const built = await createLLM({ provider: "openai", apiKey: "k" });
     expect(built.provider).toBe("openai");
     expect(built.model).toBe("gpt-4o-mini");
-    expect(built.webCredentials?.baseUrl).toBe("https://api.openai.com/v1");
+    expect(built.webCredentials.baseUrl).toBe("https://api.openai.com/v1");
   });
 
   it("自定义兼容端点必须显式给 base_url/model", async () => {
@@ -43,7 +43,7 @@ describe("createLLM 工厂（#55 provider 泛化）", () => {
         JSON.stringify({ access_token: "token-1", expires_at: future }),
       );
       const built = await createLLM({ homeDir: home });
-      expect(built.webCredentials?.apiKey).toBe("token-1");
+      expect(built.webCredentials.apiKey).toBe("token-1");
       expect(built.model).toBe("kimi-for-coding");
     } finally {
       rmSync(home, { recursive: true, force: true });

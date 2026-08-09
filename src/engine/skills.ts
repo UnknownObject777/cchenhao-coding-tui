@@ -1,7 +1,8 @@
 /**
  * skills 加载机制（#59，决策见 issue #59）：SKILL.md 按需加载。
  * 发现：项目级 <workspace>/.agents/skills + 用户级 <home>/.mini-agent/skills，
- * 一层目录扫描（每 skill = 根下一个目录里的 SKILL.md，不递归）；重名时项目级覆盖用户级。
+ * 一层目录扫描（每 skill = 根下一个目录里的 SKILL.md，不递归）；重名时项目级覆盖用户级；
+ * 同根内重名按 (name, path) 排序后取路径最大者——确定性，不受 readdir 目录项顺序影响。
  * 启动只注入名称+描述清单（formatSkillList），模型经 load_skill 工具 / 人经 /<skill-name> 触发加载全文。
  * 不做 .gitignore 感知、不做 SkillDiagnostic 细粒度诊断（无效文件静默跳过）。
  * 上游（pi-mono loadSkills）可借鉴点：frontmatter 校验（name ≤64 小写 a-z/数字/连字符、description ≤1024）、多来源 merge；不 vendor。
@@ -38,7 +39,17 @@ async function scanSkillsDir(root: string, sourceLabel: string): Promise<Skill[]
     if (parsed === undefined || !isValidSkill(parsed)) continue;
     skills.push({ name: parsed.name, description: parsed.description, path, source: sourceLabel });
   }
-  return skills;
+  // 同根内按 (name, path) 排序后去重：重名只留排序后最后者——消除 readdir 目录项顺序对结果的影响（确定性）
+  skills.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+  const unique: Skill[] = [];
+  for (const skill of skills) {
+    if (unique.length > 0 && unique[unique.length - 1]!.name === skill.name) {
+      unique[unique.length - 1] = skill;
+    } else {
+      unique.push(skill);
+    }
+  }
+  return unique;
 }
 
 /**

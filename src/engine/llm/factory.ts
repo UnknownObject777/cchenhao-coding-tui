@@ -24,8 +24,8 @@ export interface BuiltLLM {
   provider: string;
   /** 生效的模型名（UI 展示用）。 */
   model: string;
-  /** web 工具复用凭证的显式出口（当前与 LLM 同一份；独立配置留作后续）。 */
-  webCredentials?: { apiKey: string; baseUrl: string };
+  /** web 工具复用凭证的显式出口（当前与 LLM 同一份凭证）。 */
+  webCredentials: { apiKey: string; baseUrl: string };
 }
 
 interface ProviderDefaults {
