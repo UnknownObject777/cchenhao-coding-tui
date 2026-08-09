@@ -28,7 +28,7 @@ mini-agent -p "任务" --output-format stream-json   # 事件逐行 JSON（管�
 | `Enter` | 提交消息 |
 | `Shift+Enter` / `Ctrl+J` | 换行（多行输入） |
 | 多行粘贴 | bracketed paste，不误提交 |
-| `/` | slash 命令补全（`/clear` 清对话与上下文、`/delete` 连 wire 记录一起删） |
+| `/` | slash 命令补全（`/clear` 清对话与上下文、`/delete` 连 wire 记录一起删、`/compact` 压缩上下文；发现的每个 skill 各占一条 `/<skill-name>`） |
 | `y` / `n` / `a` / `esc` | 审批帧回答：允许 / 拒绝 / 本会话始终允许 / 拒绝 |
 | `Ctrl+O` | 折叠/展开最近的工具帧 |
 | `Ctrl+C` | 退出（干净恢复 raw mode） |
@@ -40,6 +40,15 @@ mini-agent -p "任务" --output-format stream-json   # 事件逐行 JSON（管�
 配置文件（JSON）：用户级 `~/.mini-agent/config.json` + 项目级 `<工作区>/.agent.json`；优先级 **env > 项目级 > 用户级 > 订阅 OAuth 兜底（仅 kimi）**。字段：`provider` / `api_key` / `base_url` / `model` / `system_prompt_file`。`provider` 默认 `kimi`，`openai` 表示 OpenAI 官方端点，其它自定义名表示任意 OpenAI 兼容端点（自定义名需显式 `base_url` + `model`）。系统 prompt 覆盖链：显式 `system_prompt_file` > 项目级 `.agent.md` > 内置默认。启动时 stderr 打印生效来源（脱敏）。
 
 会话记录按工作区存放在 `~/.mini-agent/sessions/<工作区>/<会话>.jsonl`；TUI 启动时可选择继续历史会话（恢复上下文与审批记忆）。
+
+### Skills（#59）
+
+SKILL.md 按需加载：启动时只把 **名称 + 描述** 清单追加进系统 prompt；模型需要用某个 skill 时经 `load_skill` 工具取回全文，人也可以在 TUI 里直接输 `/<skill-name>` 注入同样内容（等价 load_skill 回灌）。不隔离 subagent 上下文。
+
+- 发现路径：项目级 `<工作区>/.agents/skills/<名字>/SKILL.md` + 用户级 `~/.mini-agent/skills/<名字>/SKILL.md`（与 `~/.mini-agent/` 配置目录同构）。**一层扫描**（每 skill = 根下一个目录里的 `SKILL.md`，不递归）。重名时**项目级覆盖用户级**。
+- 格式：`SKILL.md` 开头用 YAML frontmatter 声明 `name`（≤64 字符，小写 a-z/数字/连字符）与 `description`（≤1024 字符，非空）；正文是加载回来的完整内容。缺 frontmatter、名字/描述不合法、目录里没有 `SKILL.md` 的条目一律**静默跳过**（不做细粒度诊断、不感知 .gitignore）。
+- 加载后正文以 `<skill name="..." path="...">` 块注入上下文，frontmatter 剥掉；slash 注入不落 wire（会话恢复后需重新触发）。
+- 空清单（没发现任何 skill）不追加系统 prompt 段、不注册 `load_skill`，避免噪音工具。
 
 ### 凭证与环境变量
 

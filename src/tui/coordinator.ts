@@ -5,6 +5,8 @@
  */
 import type { EventBus } from "../engine/events.ts";
 import type { Loop } from "../engine/loop.ts";
+import { formatSkillInvocation, skillBody, type Skill } from "../engine/skills.ts";
+import { errorMessage } from "../engine/tools/executor.ts";
 import type { WireService } from "../engine/wire.ts";
 import {
   matchesKey,
@@ -21,8 +23,10 @@ import { UserMessageComponent } from "./components/messages/user-message.ts";
 /** coordinator 需要的引擎能力面（窄接口，结构类型；bootstrap.Agent 天然满足）。 */
 export interface CoordinatorAgent {
   bus: EventBus;
-  loop: Pick<Loop, "runTurn" | "reset" | "compact">;
+  loop: Pick<Loop, "runTurn" | "reset" | "compact" | "injectContext">;
   wire: Pick<WireService, "clear">;
+  /** 发现的 skills（#59）：/<skill-name> 命令与注入查表。 */
+  skills: Skill[];
 }
 
 export interface CoordinatorDeps {
@@ -129,6 +133,23 @@ export class TuiCoordinator {
       // /compact：只缩引擎上下文，transcript 原样保留；反馈靠下一轮 footer 用量回落
       compactContext: async () => {
         await this.deps.agent.loop.compact();
+      },
+      // /<skill-name>（#59）：人等价触发 load_skill——读全文、剥 frontmatter、注入上下文。
+      // 注入形状与 load_skill 工具回灌一致（formatSkillInvocation），模型体验无差别。
+      invokeSkill: async (name: string) => {
+        const skill = this.deps.agent.skills.find((s) => s.name === name);
+        if (skill === undefined) {
+          this.deps.chat.addChild(errorLine(`unknown skill: ${name}`));
+          this.deps.tui.requestRender();
+          return;
+        }
+        try {
+          const body = await skillBody(skill);
+          this.deps.agent.loop.injectContext(formatSkillInvocation(skill.name, skill.path, body));
+        } catch (error) {
+          this.deps.chat.addChild(errorLine(`skill ${name} 加载失败：${errorMessage(error)}`));
+          this.deps.tui.requestRender();
+        }
       },
     };
   }

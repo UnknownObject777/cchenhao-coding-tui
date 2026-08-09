@@ -9,6 +9,8 @@ export interface SlashCommandContext {
   deleteSession(): Promise<void>;
   /** 压缩上下文（#57）：摘要早期对话、保留最近内容；不动 transcript。 */
   compactContext(): Promise<void>;
+  /** 注入 skill 全文到上下文（/<skill-name> 触发，等价 load_skill 工具回灌；不落 wire）。 */
+  invokeSkill(name: string): Promise<void>;
 }
 
 export interface SlashCommandDefinition {

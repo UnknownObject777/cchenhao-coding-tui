@@ -66,6 +66,14 @@ export class Loop {
   }
 
   /**
+   * 注入一条上下文消息（#59：slash 触发 skill 等价模型经 load_skill 工具自取）。
+   * user 角色、不进 wire——纯上下文，会话恢复后需重新触发（玩具可接受，todo 之类有状态事实才走事件通道）。
+   */
+  injectContext(content: string): void {
+    this.messages.push({ role: "user", content });
+  }
+
+  /**
    * 手动压缩（/compact 兜底，#57）：摘要头部旧消息、保留最近尾部。
    * 无可压缩内容（head 为空）返回 false，不烧 LLM 调用。
    */

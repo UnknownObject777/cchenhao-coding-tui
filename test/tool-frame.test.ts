@@ -57,6 +57,7 @@ describe("tool frame collapse/expand (#24)", () => {
       history: [],
       approvalMemory: [],
       systemPrompt: "",
+      skills: [],
       todos: new TodoStore(),
     };
 

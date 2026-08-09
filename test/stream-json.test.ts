@@ -30,6 +30,7 @@ function fakeAgent(script: ConstructorParameters<typeof FakeLLM>[0]): Agent {
     history: [],
     approvalMemory: [],
     systemPrompt: "",
+    skills: [],
     todos: new TodoStore(),
   };
 }

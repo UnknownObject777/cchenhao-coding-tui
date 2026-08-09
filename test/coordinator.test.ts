@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { makeTempDir } from "./helpers/temp-dir.ts";
@@ -6,9 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "../src/bootstrap.ts";
 import { EventBus } from "../src/engine/events.ts";
 import type { Loop } from "../src/engine/loop.ts";
+import { discoverSkills, type Skill } from "../src/engine/skills.ts";
 import { TodoStore } from "../src/engine/todo.ts";
 import { WireService } from "../src/engine/wire.ts";
+import { builtinCommands } from "../src/tui/commands/builtins.ts";
 import { parseSlashCommand } from "../src/tui/commands/parse.ts";
+import { buildSkillCommands } from "../src/tui/commands/skills.ts";
 import { TuiCoordinator } from "../src/tui/coordinator.ts";
 import { createEditorTheme } from "../src/tui/theme/pi-tui-theme.ts";
 import { Container, Editor } from "../vendor/pi-tui/src/index.ts";
@@ -33,6 +37,7 @@ interface CoordinatorFixture {
   runTurn: ReturnType<typeof vi.fn>;
   loopReset: ReturnType<typeof vi.fn>;
   loopCompact: ReturnType<typeof vi.fn>;
+  loopInjectContext: ReturnType<typeof vi.fn>;
   wire: WireService;
   onExit: ReturnType<typeof vi.fn>;
   h: ReturnType<typeof createTuiHarness>;
@@ -41,7 +46,7 @@ interface CoordinatorFixture {
   dir: string;
 }
 
-async function setupCoordinator(): Promise<CoordinatorFixture> {
+async function setupCoordinator(options?: { skills?: Skill[] }): Promise<CoordinatorFixture> {
   const dir = makeTempDir("coordinator-test-");
   const h = createTuiHarness(80, 24);
   const bus = new EventBus();
@@ -54,9 +59,11 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
   const runTurn = vi.fn<(prompt: string) => Promise<void>>().mockResolvedValue(undefined);
   const loopReset = vi.fn();
   const loopCompact = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
+  const loopInjectContext = vi.fn<(content: string) => void>();
   const wire = new WireService(join(dir, "wire.jsonl"));
+  const skills = options?.skills ?? [];
   const agent = {
-    loop: { runTurn, reset: loopReset, compact: loopCompact } as unknown as Loop,
+    loop: { runTurn, reset: loopReset, compact: loopCompact, injectContext: loopInjectContext } as unknown as Loop,
     bus,
     wire,
     workspace: dir,
@@ -67,13 +74,15 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
     approvalMemory: [],
     systemPrompt: "",
     todos: new TodoStore(),
+    skills,
   } satisfies Agent;
 
   const onExit = vi.fn();
-  const coordinator = new TuiCoordinator({ tui: h.tui, editor, chat, agent, onExit });
+  const commands = skills.length > 0 ? [...builtinCommands(), ...buildSkillCommands(skills)] : undefined;
+  const coordinator = new TuiCoordinator({ tui: h.tui, editor, chat, agent, commands, onExit });
   coordinator.start();
   await h.tui.start();
-  return { coordinator, bus, runTurn, loopReset, loopCompact, wire, onExit, h, editor, chat, dir };
+  return { coordinator, bus, runTurn, loopReset, loopCompact, loopInjectContext, wire, onExit, h, editor, chat, dir };
 }
 
 describe("TuiCoordinator", () => {
@@ -190,6 +199,7 @@ describe("TuiCoordinator", () => {
         bus: fixture.bus,
         loop: { runTurn: fixture.runTurn, reset: fixture.loopReset } as unknown as Loop,
         wire: fixture.wire,
+        skills: [],
       },
       commands: [slowCommand],
       onExit: fixture.onExit,
@@ -213,5 +223,70 @@ describe("TuiCoordinator", () => {
     fixture.h.terminal.sendInput("\x03");
     await fixture.h.render();
     expect(fixture.onExit).toHaveBeenCalledOnce();
+  });
+});
+
+describe("skill slash commands (#59)", () => {
+  /** 造一个 skill 目录 + 带该 skills 的 coordinator；返回 { fixture, dirs, cleanup }。 */
+  async function setupSkillFixture(deleteAfterDiscovery = false) {
+    const dir = makeTempDir("coordinator-skill-");
+    await mkdir(join(dir, ".agents", "skills", "commit-style"), { recursive: true });
+    await writeFile(
+      join(dir, ".agents", "skills", "commit-style", "SKILL.md"),
+      "---\nname: commit-style\ndescription: 提交信息规范\n---\nbody text\n",
+    );
+    const skills = await discoverSkills(dir, dir); // home=dir：用户级无 skills
+    if (deleteAfterDiscovery) rmSync(join(dir, ".agents", "skills", "commit-style", "SKILL.md"), { force: true });
+    const fixture = await setupCoordinator({ skills });
+    return {
+      fixture,
+      dirs: [dir, fixture.dir],
+      cleanup: () => {
+        fixture.coordinator.stop();
+        for (const d of [dir, fixture.dir]) rmSync(d, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it("/<skill-name> injects the skill body into the loop context without a turn", async () => {
+    const { fixture, cleanup } = await setupSkillFixture();
+    try {
+      await fixture.coordinator.handleSubmit("/commit-style");
+
+      expect(fixture.loopInjectContext).toHaveBeenCalledOnce();
+      const content = fixture.loopInjectContext.mock.calls[0]![0] as string;
+      expect(content).toContain('<skill name="commit-style"');
+      expect(content).toContain("body text");
+      expect(content).not.toContain("description:");
+      expect(fixture.runTurn).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a skill file deleted after discovery surfaces a load error instead of a silent no-op", async () => {
+    const { fixture, cleanup } = await setupSkillFixture(true);
+    try {
+      await fixture.coordinator.handleSubmit("/commit-style");
+      await fixture.h.render();
+
+      expect(fixture.loopInjectContext).not.toHaveBeenCalled();
+      expect(fixture.h.viewport()).toContain("skill commit-style");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("an empty skills list adds no extra slash commands", async () => {
+    const fixture = await setupCoordinator({ skills: [] });
+    try {
+      await fixture.coordinator.handleSubmit("/commit-style");
+      await fixture.h.render();
+      expect(fixture.h.viewport()).toContain("unknown command: /commit-style");
+      expect(fixture.loopInjectContext).not.toHaveBeenCalled();
+    } finally {
+      fixture.coordinator.stop();
+      rmSync(fixture.dir, { recursive: true, force: true });
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { createComposedGate, alwaysMemoryFrom } from "./engine/approval/composed-gate.ts";
 import type { ApprovalGate } from "./engine/approval/gate.ts";
 import { createPrintAnswerer } from "./engine/approval/print-answerer.ts";
@@ -8,6 +9,7 @@ import type { LLMRequester, Message } from "./engine/llm/types.ts";
 import { Loop } from "./engine/loop.ts";
 import { describeConfigSources, loadEffectiveConfig, resolveSystemPrompt } from "./engine/config.ts";
 import { SessionStore } from "./engine/session.ts";
+import { discoverSkills, formatSkillList, registerSkillTool, type Skill } from "./engine/skills.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
 import { ToolExecutor, type ToolApprovalKind } from "./engine/tools/executor.ts";
 import { registerWebTools } from "./engine/tools/web.ts";
@@ -39,8 +41,10 @@ export interface Agent {
   history: RebuiltMessage[];
   /** 从 wire 还原的「始终允许」记忆键（#26 的会话记忆在恢复后延续）。 */
   approvalMemory: string[];
-  /** 生效的系统 prompt（#39：显式配置 > .agent.md > 内置默认）。 */
+  /** 生效的系统 prompt（#39：显式配置 > .agent.md > 内置默认；#59：末尾追加 skills 清单）。 */
   systemPrompt: string;
+  /** 发现的 skills（#59）：清单进 system prompt，load_skill 工具 + /<skill-name> 按需加载全文。 */
+  skills: Skill[];
   /** todo 列表状态（#58）：TUI footer 初始化与恢复会话还原用（实时变更走 todo.updated 事件）。 */
   todos: TodoStore;
 }
@@ -102,10 +106,18 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   registerBuiltinTools(executor, workspace, todos);
 
   // 配置合并（#38）：env > 项目级 .agent.json > 用户级 config.json
-  const config = await loadEffectiveConfig(workspace, options.homeDir);
+  const home = options.homeDir ?? homedir();
+  const config = await loadEffectiveConfig(workspace, home);
 
   // 系统 prompt（#39）：显式配置 > 项目级 .agent.md > 内置默认
-  const { prompt: systemPrompt, source: promptSource } = await resolveSystemPrompt(config, workspace, SYSTEM_PROMPT);
+  const { prompt: promptBase, source: promptSource } = await resolveSystemPrompt(config, workspace, SYSTEM_PROMPT);
+
+  // skills（#59）：发现（项目级 .agents/skills + 用户级 ~/.mini-agent/skills，项目级覆盖用户级）；
+  // 清单追加到生效 prompt 末尾（无论 prompt 来自哪一来源），模型经 load_skill 按需取全文
+  const skills = await discoverSkills(workspace, home);
+  const skillsSection = formatSkillList(skills);
+  const systemPrompt = skillsSection === "" ? promptBase : `${promptBase}\n\n${skillsSection}`;
+  registerSkillTool(executor, skills);
 
   let llm: LLMRequester;
   let model: string;
@@ -147,7 +159,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   if (contextMessages.length > 0) {
     loop.loadHistory(contextMessages);
   }
-  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt, todos };
+  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt, skills, todos };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */
