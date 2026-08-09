@@ -103,7 +103,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     sink.append({ type: "todo.updated", items });
   };
   const executor = new ToolExecutor();
-  registerBuiltinTools(executor, workspace, todos);
+  registerBuiltinTools(executor, workspace, todos, { sessionPath });
 
   // 配置合并（#38）：env > 项目级 .agent.json > 用户级 config.json
   const home = options.homeDir ?? homedir();

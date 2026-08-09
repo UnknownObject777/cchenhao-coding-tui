@@ -1,17 +1,41 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import type { TodoStore } from "../todo.ts";
 import type { ToolExecutor } from "./executor.ts";
 import { registerSearchTools } from "./search.ts";
+import { registerTaskTools, TaskManager, DEFAULT_BACKGROUND_TIMEOUT_MS, DEFAULT_COMMAND_TIMEOUT_MS } from "./task.ts";
 import { registerTodoTool } from "./todo.ts";
 import { resolveInside as resolveInsideWorkspace } from "./workspace.ts";
 
-/** 内置玩具工具：read_file / write_file / edit_file / run_command / list_files / grep / glob / todo。文件操作限制在工作区内；todo 为纯内存态。 */
-export function registerBuiltinTools(executor: ToolExecutor, workspace: string, todos: TodoStore): void {
+/** 会话结束（进程退出）即回收后台任务：模块级单钩子，避免多次装配累积 exit 监听器。 */
+const registeredManagers = new Set<TaskManager>();
+let exitHookInstalled = false;
+function installExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on("exit", () => {
+    for (const manager of registeredManagers) manager.dispose();
+  });
+}
+
+/** 内置玩具工具：read_file / write_file / edit_file / run_command / list_files / grep / glob / todo / task_status / task_stop。文件操作限制在工作区内；todo 与后台任务为会话内态。 */
+export function registerBuiltinTools(
+  executor: ToolExecutor,
+  workspace: string,
+  todos: TodoStore,
+  options?: { sessionPath?: string; taskManager?: TaskManager },
+): void {
   const root = resolve(workspace);
 
   const resolveInside = (path: string): string => resolveInsideWorkspace(root, path);
+
+  // 后台任务（#61）：输出落盘到会话目录 tasks/；无 sessionPath 时落到系统临时目录（测试/独立装配可显式传入）
+  const tasks =
+    options?.taskManager ?? new TaskManager(join(dirname(options?.sessionPath ?? tmpdir()), "tasks"));
+  registeredManagers.add(tasks);
+  installExitHook();
 
   executor.register({
     name: "read_file",
@@ -96,23 +120,37 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string, 
 
   executor.register({
     name: "run_command",
-    description: "Run a shell command in the workspace and return its combined output.",
+    description:
+      "Run a shell command in the workspace and return its combined output. Set background=true to start it as a background task: returns a task id immediately instead of waiting; poll with task_status and stop with task_stop.",
     approval: "command",
     parameters: {
       type: "object",
       properties: {
         command: { type: "string" },
-        timeout_ms: { type: "number", description: "Optional timeout, default 30000" },
+        timeout_ms: {
+          type: "number",
+          description: "Timeout in ms; default 30000 for foreground, 600000 for background",
+        },
+        background: { type: "boolean", description: "Start as a background task (default false)" },
       },
       required: ["command"],
     },
     execute: (args) => {
-      const timeout = typeof args["timeout_ms"] === "number" ? args["timeout_ms"] : 30_000;
-      return runShell(String(args["command"]), root, timeout);
+      const background = args["background"] === true;
+      const timeout =
+        typeof args["timeout_ms"] === "number" && Number.isFinite(args["timeout_ms"]) && args["timeout_ms"] > 0
+          ? args["timeout_ms"]
+          : background
+            ? DEFAULT_BACKGROUND_TIMEOUT_MS
+            : DEFAULT_COMMAND_TIMEOUT_MS;
+      const command = String(args["command"]);
+      if (background) return tasks.start(command, root, timeout);
+      return runShell(command, root, timeout);
     },
   });
 
   registerSearchTools(executor, root);
+  registerTaskTools(executor, tasks);
   registerTodoTool(executor, todos);
 }
 
