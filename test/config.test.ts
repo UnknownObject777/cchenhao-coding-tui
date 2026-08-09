@@ -136,4 +136,10 @@ describe("system prompt override (#39)", () => {
     const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir, homeDir: home });
     expect(agent.systemPrompt).toContain("minimal coding agent");
   });
+
+  it("built-in default prompt includes todo usage guidance (#58)", async () => {
+    const agent = await bootstrap({ workspace: dir, fake: true, sessionRoot: dir, homeDir: home });
+    expect(agent.systemPrompt).toContain("todo");
+    expect(agent.systemPrompt).toContain("in_progress");
+  });
 });

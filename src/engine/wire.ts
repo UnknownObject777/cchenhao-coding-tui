@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { pickRetainedTail, summaryMessage } from "./context.ts";
 import type { EngineEvent } from "./events.ts";
 import type { Message, ToolCall } from "./llm/types.ts";
+import type { TodoItem } from "./todo.ts";
 
 export interface WireRow {
   seq: number;
@@ -173,12 +174,25 @@ export class Rebuilder {
         case "approval.decision":
         case "context.usage":
         case "context.compacted":
-          // 思考流、审批留痕、用量指标、压缩事件不参与消息重建（transcript 是全量日志）
+        case "todo.updated":
+          // 思考流、审批留痕、用量指标、压缩事件、todo 状态事实不参与消息重建（transcript 是全量日志）
           break;
       }
     }
     flushAssistant();
     return messages;
+  }
+
+  /**
+   * todo 状态还原（#58）：todo.updated 是「最新全量列表」的覆盖式快照，
+   * 折叠取最后一个事件即为当前 todo 态（与 #57 的 context.compacted 同构：状态事实进 wire，重建还原）。
+   */
+  rebuildTodos(rows: WireRow[]): TodoItem[] {
+    let items: TodoItem[] = [];
+    for (const { event } of rows) {
+      if (event.type === "todo.updated") items = event.items;
+    }
+    return items;
   }
 
   /**
@@ -257,6 +271,7 @@ export class Rebuilder {
         case "approval.request":
         case "approval.decision":
         case "context.usage":
+        case "todo.updated":
           break;
       }
     }

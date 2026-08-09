@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { TodoStore } from "../src/engine/todo.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
 import { registerBuiltinTools } from "../src/engine/tools/builtins.ts";
 import { globToRegExp } from "../src/engine/tools/search.ts";
@@ -57,7 +58,7 @@ describe("search tools (#33, #34)", () => {
     await writeFile(join(dir, "README.md"), "# demo banana\n");
     await writeFile(join(dir, "node_modules/pkg/c.js"), "banana in deps\n");
     executor = new ToolExecutor();
-    registerBuiltinTools(executor, dir);
+    registerBuiltinTools(executor, dir, new TodoStore());
   });
 
   afterEach(() => {

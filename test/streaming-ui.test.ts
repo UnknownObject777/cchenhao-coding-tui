@@ -106,6 +106,46 @@ describe("StreamingUiController", () => {
     expect(vp).toContain("disk full");
   });
 
+  it("drives the footer todo segment from todo.updated events (#58)", async () => {
+    const h = createTuiHarness(80, 24);
+    const bus = new EventBus();
+    const chat = new Container();
+    const loader = createLoader(h.tui);
+    const footer = new FooterComponent({ model: "m", cwd: "c", approvalLabel: "审批:交互" });
+    h.tui.addChild(chat);
+    h.tui.addChild(loader);
+    h.tui.addChild(footer);
+    const controller = new StreamingUiController({
+      bus,
+      chat,
+      loader,
+      footer,
+      requestRender: () => h.tui.requestRender(true),
+    });
+    controller.start();
+    await h.tui.start();
+    await h.render();
+    expect(h.viewport()).not.toContain("todo");
+
+    bus.emit("todo.updated", {
+      items: [
+        { content: "读代码", status: "done" },
+        { content: "写测试", status: "in_progress" },
+      ],
+    });
+    await h.render();
+    const vp = h.viewport();
+    expect(vp).toContain("todo 1/2");
+    expect(vp).toContain("写测试");
+
+    // 清空列表 → footer 复位
+    bus.emit("todo.updated", { items: [] });
+    await h.render();
+    expect(h.viewport()).not.toContain("todo");
+    controller.stop();
+    h.stop();
+  });
+
   it("renders think streams as a folded dim block, separate from the reply (#20)", async () => {
     const { h, bus } = await mountWithController();
     bus.emit("turn.started", { turnId: 1, prompt: "hi" });
@@ -161,6 +201,45 @@ describe("chrome components", () => {
     expect(vp).toContain("kimi-for-coding");
     expect(vp).toContain("D:/proj");
     expect(vp).toContain("审批:规则");
+    h.stop();
+  });
+
+  it("footer hides the todo segment when the list is empty", async () => {
+    const h = createTuiHarness(80, 24);
+    const footer = new FooterComponent({ model: "m", cwd: "c", approvalLabel: "审批:交互" });
+    h.tui.addChild(footer);
+    await h.tui.start();
+    await h.render();
+    expect(h.viewport()).not.toContain("todo");
+    h.stop();
+  });
+
+  it("footer renders todo progress and the in_progress item (#58)", async () => {
+    const h = createTuiHarness(80, 24);
+    const footer = new FooterComponent({ model: "m", cwd: "c", approvalLabel: "审批:规则" });
+    footer.setTodos([
+      { content: "读代码", status: "done" },
+      { content: "写测试", status: "in_progress" },
+      { content: "提交", status: "pending" },
+    ]);
+    h.tui.addChild(footer);
+    await h.tui.start();
+    await h.render();
+    const vp = h.viewport();
+    expect(vp).toContain("todo 1/3");
+    expect(vp).toContain("写测试");
+    h.stop();
+  });
+
+  it("footer resets the todo segment when the list is cleared", async () => {
+    const h = createTuiHarness(80, 24);
+    const footer = new FooterComponent({ model: "m", cwd: "c", approvalLabel: "审批:交互" });
+    footer.setTodos([{ content: "a", status: "in_progress" }]);
+    h.tui.addChild(footer);
+    await h.tui.start();
+    footer.setTodos([]);
+    await h.render();
+    expect(h.viewport()).not.toContain("todo");
     h.stop();
   });
 

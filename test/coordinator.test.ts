@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "../src/bootstrap.ts";
 import { EventBus } from "../src/engine/events.ts";
 import type { Loop } from "../src/engine/loop.ts";
+import { TodoStore } from "../src/engine/todo.ts";
 import { WireService } from "../src/engine/wire.ts";
 import { parseSlashCommand } from "../src/tui/commands/parse.ts";
 import { TuiCoordinator } from "../src/tui/coordinator.ts";
@@ -65,6 +66,7 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
     history: [],
     approvalMemory: [],
     systemPrompt: "",
+    todos: new TodoStore(),
   } satisfies Agent;
 
   const onExit = vi.fn();

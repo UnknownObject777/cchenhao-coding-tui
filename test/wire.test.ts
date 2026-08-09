@@ -186,6 +186,67 @@ describe("wire", () => {
       { role: "assistant", text: "new answer" },
     ]);
   });
+
+  it("rebuildTodos returns the last todo.updated list (full-snapshot overwrite)", async () => {
+    const events: EngineEvent[] = [
+      { type: "todo.updated", items: [{ content: "a", status: "pending" }] },
+      { type: "todo.updated", items: [{ content: "a", status: "in_progress" }] },
+      { type: "todo.updated", items: [] },
+      { type: "todo.updated", items: [{ content: "a", status: "done" }] },
+    ];
+    const wire = new WireService(wirePath);
+    for (const event of events) await wire.append(event);
+
+    expect(new Rebuilder().rebuildTodos(await wire.readAll())).toEqual([
+      { content: "a", status: "done" },
+    ]);
+  });
+
+  it("rebuildTodos returns [] when no todo event exists", async () => {
+    const wire = new WireService(wirePath);
+    for (const event of turn1) await wire.append(event);
+
+    expect(new Rebuilder().rebuildTodos(await wire.readAll())).toEqual([]);
+  });
+
+  it("rebuild and rebuildForContext skip todo.updated without breaking tool pairing", async () => {
+    const events: EngineEvent[] = [
+      { type: "turn.started", turnId: 1, prompt: "hi" },
+      {
+        type: "tool.call",
+        id: "c1",
+        name: "todo",
+        args: { todos: [{ content: "a", status: "pending" }] },
+      },
+      { type: "todo.updated", items: [{ content: "a", status: "pending" }] },
+      { type: "tool.result", id: "c1", name: "todo", ok: true, output: "todos (1):\n1. [pending] a" },
+      { type: "turn.ended", turnId: 1, reason: "finish" },
+    ];
+    const wire = new WireService(wirePath);
+    for (const event of events) await wire.append(event);
+
+    // UI 通道:todo 状态事实不掺进消息流,工具配对不受夹心事件影响
+    expect(new Rebuilder().rebuild(await wire.readAll())).toEqual([
+      { role: "user", text: "hi" },
+      {
+        role: "tool",
+        name: "todo",
+        args: { todos: [{ content: "a", status: "pending" }] },
+        ok: true,
+        output: "todos (1):\n1. [pending] a",
+      },
+    ]);
+    // 上下文通道:协议形状不变
+    expect(new Rebuilder().rebuildForContext(await wire.readAll())).toEqual([
+      { role: "user", content: "hi" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "todo", args: { todos: [{ content: "a", status: "pending" }] } }],
+      },
+      { role: "tool", toolCallId: "c1", name: "todo", content: "todos (1):\n1. [pending] a" },
+    ]);
+  });
 });
 
 describe("WireEventSink", () => {

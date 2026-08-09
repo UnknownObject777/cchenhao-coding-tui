@@ -7,6 +7,7 @@ import type { Agent } from "../src/bootstrap.ts";
 import { EventBus } from "../src/engine/events.ts";
 import { FakeLLM } from "../src/engine/llm/fake.ts";
 import { Loop } from "../src/engine/loop.ts";
+import { TodoStore } from "../src/engine/todo.ts";
 import { registerBuiltinTools } from "../src/engine/tools/builtins.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
 import { WireService } from "../src/engine/wire.ts";
@@ -32,7 +33,7 @@ describe("tool frame collapse/expand (#24)", () => {
   it("collapses by default, expands and re-collapses on ctrl+o", async () => {
     const bus = new EventBus();
     const executor = new ToolExecutor();
-    registerBuiltinTools(executor, dir);
+    registerBuiltinTools(executor, dir, new TodoStore());
     const llm = new FakeLLM([
       [
         { type: "tool_call", id: "c1", name: "write_file", args: { path: "big.txt", content: LONG_TEXT } },
@@ -50,11 +51,13 @@ describe("tool frame collapse/expand (#24)", () => {
       bus,
       wire: new WireService(join(dir, "wire.jsonl")),
       workspace: dir,
+      approvalKind: (name) => executor.approvalKind(name),
       model: "fake-llm",
       sessionPath: join(dir, "wire.jsonl"),
       history: [],
       approvalMemory: [],
       systemPrompt: "",
+      todos: new TodoStore(),
     };
 
     const h = createTuiHarness(100, 40);

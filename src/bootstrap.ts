@@ -11,6 +11,7 @@ import { SessionStore } from "./engine/session.ts";
 import { registerBuiltinTools } from "./engine/tools/builtins.ts";
 import { ToolExecutor, type ToolApprovalKind } from "./engine/tools/executor.ts";
 import { registerWebTools } from "./engine/tools/web.ts";
+import { TodoStore } from "./engine/todo.ts";
 import { Rebuilder, WireEventSink, WireService, type RebuiltMessage } from "./engine/wire.ts";
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
@@ -18,7 +19,10 @@ Your workspace is the current directory. \
 Use the provided tools (read_file / write_file / edit_file / run_command) to act on files, \
 then answer briefly. Paths are relative to the workspace. \
 For a small, targeted change to an existing file use edit_file (old_string/new_string); \
-use write_file for new files or large rewrites.`;
+use write_file for new files or large rewrites. \
+For multi-step work, maintain a todo list with the todo tool: submit the complete list \
+with statuses pending / in_progress / done, keep at most one item in_progress, and rewrite \
+the whole list whenever anything changes. For a single quick step, skip todos.`;
 
 export interface Agent {
   loop: Loop;
@@ -37,6 +41,8 @@ export interface Agent {
   approvalMemory: string[];
   /** 生效的系统 prompt（#39：显式配置 > .agent.md > 内置默认）。 */
   systemPrompt: string;
+  /** todo 列表状态（#58）：TUI footer 初始化与恢复会话还原用（实时变更走 todo.updated 事件）。 */
+  todos: TodoStore;
 }
 
 export interface BootstrapOptions {
@@ -64,6 +70,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   let history: RebuiltMessage[] = [];
   let contextMessages: Message[] = [];
   let approvalMemory: string[] = [];
+  const todos = new TodoStore();
   const resumePath =
     typeof options.session === "object"
       ? options.session.resume
@@ -77,14 +84,22 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
     history = rebuilder.rebuild(rows);
     contextMessages = rebuilder.rebuildForContext(rows);
     approvalMemory = [...alwaysMemoryFrom(rows)];
+    // todo 状态事实还原（#58）：取最后一个 todo.updated 快照，静默注入
+    todos.restore(rebuilder.rebuildTodos(rows));
   } else {
     // print 会话进 print/ 子目录，不污染 TUI 的「继续上次」
     sessionPath = store.createPath(options.printApproval ? "print" : "chat");
   }
   const wire = new WireService(sessionPath);
   const sink = new WireEventSink(wire);
+  // todo 状态事实双通道（#58，仿 loop.publish）：bus 事件给 TUI，sink 落 wire 供恢复。
+  // 挂在 store 变更回调上而非 loop——工具在 executor 内执行，loop 保持工具无关。
+  todos.onChange = (items) => {
+    bus.emit("todo.updated", { items });
+    sink.append({ type: "todo.updated", items });
+  };
   const executor = new ToolExecutor();
-  registerBuiltinTools(executor, workspace);
+  registerBuiltinTools(executor, workspace, todos);
 
   // 配置合并（#38）：env > 项目级 .agent.json > 用户级 config.json
   const config = await loadEffectiveConfig(workspace, options.homeDir);
@@ -132,7 +147,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   if (contextMessages.length > 0) {
     loop.loadHistory(contextMessages);
   }
-  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt };
+  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt, todos };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

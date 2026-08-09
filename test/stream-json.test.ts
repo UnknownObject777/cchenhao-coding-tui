@@ -5,6 +5,7 @@ import type { Agent } from "../src/bootstrap.ts";
 import { EventBus } from "../src/engine/events.ts";
 import { FakeLLM } from "../src/engine/llm/fake.ts";
 import { Loop } from "../src/engine/loop.ts";
+import { TodoStore } from "../src/engine/todo.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
 import { WireService } from "../src/engine/wire.ts";
 
@@ -23,11 +24,13 @@ function fakeAgent(script: ConstructorParameters<typeof FakeLLM>[0]): Agent {
     bus,
     wire: new WireService(":memory:"),
     workspace: ":memory:",
+    approvalKind: () => undefined,
     model: "fake-llm",
     sessionPath: ":memory:",
     history: [],
     approvalMemory: [],
     systemPrompt: "",
+    todos: new TodoStore(),
   };
 }
 

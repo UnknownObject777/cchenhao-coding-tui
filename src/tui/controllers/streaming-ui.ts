@@ -55,6 +55,11 @@ export class StreamingUiController {
         this.footer?.setUsage(estimatedTokens, budgetTokens);
         this.requestRender();
       }),
+      this.bus.on("todo.updated", ({ items }) => {
+        // todo 状态事实（#58）：footer 进度段随事件刷新（会话恢复时由 app.ts 预置，不走事件）
+        this.footer?.setTodos(items);
+        this.requestRender();
+      }),
       this.bus.on("turn.started", () => {
         this.sealStreamState();
         this.currentThinking = undefined;

@@ -1,3 +1,5 @@
+import type { TodoItem } from "./todo.ts";
+
 /**
  * 引擎领域事件契约。引擎与 UI 之间唯一的通信通道：
  * UI 只认事件、不碰引擎内部状态。事件类型定义放引擎侧（ADR-0001）。
@@ -21,6 +23,8 @@ export interface EngineEvents {
   "context.usage": { estimatedTokens: number; budgetTokens: number };
   /** 上下文压缩（#57）：旧消息被摘要替换、保留最近尾部；wire 重建以此为上下文复位点。 */
   "context.compacted": { summary: string; tailTokens: number };
+  /** todo 列表状态事实（#58）：全量覆盖式快照；进 wire 供会话恢复，TUI footer 呈现。 */
+  "todo.updated": { items: TodoItem[] };
   "turn.ended": { turnId: number; reason: "finish" | "error"; error?: string };
 }
 
@@ -40,6 +44,7 @@ export const ENGINE_EVENT_NAMES: EngineEventName[] = [
   "approval.decision",
   "context.usage",
   "context.compacted",
+  "todo.updated",
   "turn.ended",
 ];
 

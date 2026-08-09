@@ -73,6 +73,10 @@ export function assembleTui(
     new WelcomeComponent({ toolName: info.toolName, version: info.version, model: info.model, cwd: info.cwd }),
   );
   const footer = new FooterComponent({ model: info.model, cwd: info.cwd, approvalLabel: info.approvalLabel });
+  // 恢复会话的 todo 状态预置（#58）：restore 是静默注入，不重发事件，footer 从这里初始化
+  if (agent.todos.list().length > 0) {
+    footer.setTodos(agent.todos.list());
+  }
   tui.addChild(chat);
   tui.addChild(loader);
   tui.addChild(footer);
@@ -112,6 +116,7 @@ export function assembleTui(
       bus: agent.bus,
       workspace: agent.workspace,
       answerer,
+      approvalKind: agent.approvalKind,
       remembered: new Set(agent.approvalMemory),
     }),
   );

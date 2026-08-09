@@ -1,12 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { TodoStore } from "../todo.ts";
 import type { ToolExecutor } from "./executor.ts";
 import { registerSearchTools } from "./search.ts";
+import { registerTodoTool } from "./todo.ts";
 import { resolveInside as resolveInsideWorkspace } from "./workspace.ts";
 
-/** 内置玩具工具：read_file / write_file / edit_file / run_command / list_files / grep / glob。文件操作限制在工作区内。 */
-export function registerBuiltinTools(executor: ToolExecutor, workspace: string): void {
+/** 内置玩具工具：read_file / write_file / edit_file / run_command / list_files / grep / glob / todo。文件操作限制在工作区内；todo 为纯内存态。 */
+export function registerBuiltinTools(executor: ToolExecutor, workspace: string, todos: TodoStore): void {
   const root = resolve(workspace);
 
   const resolveInside = (path: string): string => resolveInsideWorkspace(root, path);
@@ -14,6 +16,7 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string):
   executor.register({
     name: "read_file",
     description: "Read a UTF-8 text file from the workspace.",
+    approval: "read",
     parameters: {
       type: "object",
       properties: { path: { type: "string", description: "Path relative to the workspace" } },
@@ -25,6 +28,7 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string):
   executor.register({
     name: "write_file",
     description: "Write a UTF-8 text file inside the workspace, creating parent directories.",
+    approval: "write",
     parameters: {
       type: "object",
       properties: {
@@ -93,6 +97,7 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string):
   executor.register({
     name: "run_command",
     description: "Run a shell command in the workspace and return its combined output.",
+    approval: "command",
     parameters: {
       type: "object",
       properties: {
@@ -108,6 +113,7 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string):
   });
 
   registerSearchTools(executor, root);
+  registerTodoTool(executor, todos);
 }
 
 function runShell(command: string, cwd: string, timeout: number): Promise<string> {

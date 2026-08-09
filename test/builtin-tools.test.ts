@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { TodoStore } from "../src/engine/todo.ts";
 import { registerBuiltinTools } from "../src/engine/tools/builtins.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
 
@@ -12,7 +13,7 @@ describe("builtin tools", () => {
   beforeEach(() => {
     dir = makeTempDir("tools-test-");
     executor = new ToolExecutor();
-    registerBuiltinTools(executor, dir);
+    registerBuiltinTools(executor, dir, new TodoStore());
   });
 
   afterEach(() => {
