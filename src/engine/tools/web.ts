@@ -70,6 +70,7 @@ export function registerWebTools(executor: ToolExecutor, options: WebToolsOption
     name: "web_search",
     description:
       "Search the web. Returns results with Title/URL/Snippet (+Site/Date when available); use web_fetch on a URL for full text.",
+    approval: "read",
     parameters: {
       type: "object",
       properties: { text_query: { type: "string" } },
@@ -98,6 +99,7 @@ export function registerWebTools(executor: ToolExecutor, options: WebToolsOption
   executor.register({
     name: "web_fetch",
     description: "Fetch a web page as markdown via the subscription fetch endpoint.",
+    approval: "read",
     parameters: {
       type: "object",
       properties: { url: { type: "string", description: "http(s) URL" } },

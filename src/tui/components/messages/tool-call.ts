@@ -5,26 +5,16 @@
 import { Text, truncateToWidth, visibleWidth, type Component } from "../../../../vendor/pi-tui/src/index.ts";
 import { FAILURE_MARK, MESSAGE_INDENT, STATUS_BULLET, SUCCESS_MARK, TOOL_FRAME_TOGGLE_KEY } from "../../constant/symbols.ts";
 import { hex } from "../../theme/pi-tui-theme.ts";
-import { layOutBlock } from "./block-layout.ts";
+import { layOutBlock, summarizeArgs } from "./block-layout.ts";
 
 /** 折叠态结果预览的最大行数。 */
 const RESULT_PREVIEW_LINES = 5;
 /** 展开态的最大行数（超出显示截断标记；#37 会在执行层做统一字节护栏）。 */
 const EXPANDED_MAX_LINES = 200;
-/** header 参数摘要的最大字符数。 */
-const MAX_ARG_SUMMARY_LENGTH = 60;
 
 interface ToolResultState {
   ok: boolean;
   output: string;
-}
-
-/** 取第一个字符串参数当摘要（path/command/content 都是首个）；无字符串参数则不显示。 */
-export function summarizeArgs(args: Record<string, unknown>): string {
-  const firstString = Object.values(args).find((v) => typeof v === "string") as string | undefined;
-  if (firstString === undefined) return "";
-  const oneLine = firstString.replace(/\s+/g, " ").trim();
-  return oneLine.length > MAX_ARG_SUMMARY_LENGTH ? oneLine.slice(0, MAX_ARG_SUMMARY_LENGTH) + "…" : oneLine;
 }
 
 export class ToolCallComponent implements Component {

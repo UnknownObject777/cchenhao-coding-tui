@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { open, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseWireRow } from "./wire.ts";
 
 /**
  * 工作区路径 → 目录名片段：可读前缀 + 全路径短哈希（防 "my proj"/"my-proj"、
@@ -80,14 +81,9 @@ async function readFirstPrompt(path: string): Promise<string> {
       const buffer = Buffer.alloc(8192);
       const { bytesRead } = await handle.read(buffer, 0, 8192, 0);
       for (const line of buffer.toString("utf8", 0, bytesRead).split("\n")) {
-        if (line.trim() === "") continue;
-        try {
-          const row = JSON.parse(line) as { event?: { type?: string; prompt?: string } };
-          if (row.event?.type === "turn.started" && typeof row.event.prompt === "string") {
-            return row.event.prompt.slice(0, 60);
-          }
-        } catch {
-          // 坏行跳过（#42 同款容错）
+        const row = parseWireRow(line);
+        if (row?.event.type === "turn.started") {
+          return row.event.prompt.slice(0, 60);
         }
       }
       return "";

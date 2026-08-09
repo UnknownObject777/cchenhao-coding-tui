@@ -8,6 +8,8 @@ tags:
 
 # Spec · 迷你 Coding Agent 玩具（pi-tui）
 
+> 状态：已完成。MVP 及后续拓展（见 [docs/spec-v2.md](./docs/spec-v2.md) 的 A/B 阶段）全部落地，issues #1–#50 关闭，第一阶段 2026-08-08 收尾。
+
 > 目标：用 `@moonshot-ai/pi-tui` 写一个极简 coding agent 聊天终端应用，**照搬 kimi-code 的 TUI 架构分层**（KimiTUI 协调器 / controllers / components / theme / streaming-ui 模式），但引擎部分**自写迷你版**（loop / llmRequester / toolExecutor / wire）。用最小的代码把"一个 agent 是怎么跑起来的 + 真实产品的 TUI 是怎么组织的"同时落到手。
 > 依据：kimi-code 的 TUI 本身就是基于 pi-tui 的（见 [[包依赖图]]：`apps/kimi-code` 是 `@moonshot-ai/pi-tui` 的消费者），所以"照搬架构"不是重新发明，而是学它的组织方式。
 

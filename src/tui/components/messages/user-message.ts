@@ -7,7 +7,6 @@ import chalk from "chalk";
 import { Text, type Component } from "../../../../vendor/pi-tui/src/index.ts";
 import { USER_MESSAGE_BULLET } from "../../constant/symbols.ts";
 import { hex } from "../../theme/pi-tui-theme.ts";
-import { currentTheme } from "../../theme/theme.ts";
 import { bulletWidth, layOutBlock } from "./block-layout.ts";
 
 export class UserMessageComponent implements Component {
@@ -21,7 +20,7 @@ export class UserMessageComponent implements Component {
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width);
-    const bullet = chalk.hex(currentTheme.color("roleUser")).bold(USER_MESSAGE_BULLET);
+    const bullet = chalk.bold(hex("roleUser")(USER_MESSAGE_BULLET));
     const contentWidth = Math.max(1, safeWidth - bulletWidth(USER_MESSAGE_BULLET));
     const bodyLines = new Text(hex("roleUser")(this.text), 0, 0).render(contentWidth);
     return layOutBlock(safeWidth, bullet, bodyLines);

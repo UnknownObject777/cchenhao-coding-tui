@@ -121,6 +121,7 @@ export function registerSearchTools(executor: ToolExecutor, workspace: string): 
   executor.register({
     name: "list_files",
     description: "List files and directories under a workspace path (relative paths, dirs end with /).",
+    approval: "read",
     parameters: {
       type: "object",
       properties: {
@@ -142,6 +143,7 @@ export function registerSearchTools(executor: ToolExecutor, workspace: string): 
   executor.register({
     name: "glob",
     description: "Match files by glob pattern (** crosses directories, * within a segment).",
+    approval: "read",
     parameters: {
       type: "object",
       properties: {
@@ -168,6 +170,7 @@ export function registerSearchTools(executor: ToolExecutor, workspace: string): 
   executor.register({
     name: "grep",
     description: "Search file contents with a regular expression; output path:line:content. Skips binaries and files over 1MB.",
+    approval: "read",
     parameters: {
       type: "object",
       properties: {

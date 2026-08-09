@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChunkConverter, parseSseData, type ChatChunk } from "../src/engine/llm/kimi-stream.ts";
+import { ChunkConverter, parseSseData, SseLineSplitter, type ChatChunk } from "../src/engine/llm/kimi-stream.ts";
 
 const chunk = (obj: object): ChatChunk => obj as ChatChunk;
 
@@ -69,5 +69,32 @@ describe("kimi-stream", () => {
       },
       { type: "finish", reason: "tool_calls" },
     ]);
+  });
+});
+
+describe("SseLineSplitter", () => {
+  it("splits a chunk into complete lines and buffers the tail", () => {
+    const splitter = new SseLineSplitter();
+    expect(splitter.push("data: a\ndata: b\nda")).toEqual(["data: a\n", "data: b\n"]);
+    expect(splitter.push("ta: c\n")).toEqual(["data: c\n"]);
+    expect(splitter.flush()).toEqual([]);
+  });
+
+  it("handles a data line cut across three chunks", () => {
+    const splitter = new SseLineSplitter();
+    expect(splitter.push("data: {\"cho")).toEqual([]);
+    expect(splitter.push("ices\":[{\"del")).toEqual([]);
+    expect(splitter.push("ta\":{}}]}\n")).toEqual(['data: {"choices":[{"delta":{}}]}\n']);
+  });
+
+  it("flush returns a final line without a trailing newline", () => {
+    const splitter = new SseLineSplitter();
+    expect(splitter.push("data: x\ndata: [DONE]")).toEqual(["data: x\n"]);
+    expect(splitter.flush()).toEqual(["data: [DONE]"]);
+    expect(splitter.flush()).toEqual([]);
+  });
+
+  it("flush on empty buffer returns nothing", () => {
+    expect(new SseLineSplitter().flush()).toEqual([]);
   });
 });
