@@ -7,7 +7,7 @@ import type { ToolApprovalKind } from "../tools/executor.ts";
 import { computeWritePreview } from "../tools/diff.ts";
 import type { WireRow } from "../wire.ts";
 import { publishApprovalRequest, type ApprovalCall, type ApprovalDecision, type ApprovalGate } from "./gate.ts";
-import { classifyCall } from "./rules.ts";
+import { classifyCall, isCriticalConfigPath } from "./rules.ts";
 
 /** confirm 级别时如何拿答案（UI 交互 / --yes 策略）。 */
 export interface ApprovalAnswerer {
@@ -74,14 +74,17 @@ export function createComposedGate(deps: ComposedGateDeps): ApprovalGate {
         publishApprovalRequest(deps.bus, call, "deny");
         return "deny";
       }
-      if (remembered.has(memoryKey(call))) return "allow";
+      // 关键配置文件（#63）：改了会动构建/测试门槛或自身行为——即使答过 `a` 也每次重问，记忆旁路。
+      const isCriticalWrite =
+        kind === "write" && typeof call.args["path"] === "string" && isCriticalConfigPath(deps.workspace, call.args["path"]);
+      if (remembered.has(memoryKey(call)) && !isCriticalWrite) return "allow";
 
       // diff 预览（#62）：confirm 级写调用在真发问前投影变更，随同一次 call 交给
       // 应答源（TUI 帧渲染）与 approval.request 事件（stream-json 管道可消费）。
       const preview = await attachWriteDiff(call, deps.workspace, kind);
       publishApprovalRequest(deps.bus, preview, "confirm");
       const decision = await deps.answerer.ask(preview);
-      if (decision === "always") remembered.add(memoryKey(call));
+      if (decision === "always" && !isCriticalWrite) remembered.add(memoryKey(call));
       return decision;
     },
   };

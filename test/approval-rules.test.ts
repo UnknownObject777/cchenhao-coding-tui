@@ -71,6 +71,47 @@ describe("approval rules (classifyCall)", () => {
     });
   });
 
+  describe("protected paths are denied even inside the workspace (#63)", () => {
+    it.each([
+      { name: "write_file", args: { path: ".git/config" } },
+      { name: "write_file", args: { path: ".git/objects/ab/123" } },
+      { name: "edit_file", args: { path: ".git/HEAD" } },
+      { name: "edit_file", args: { path: ".git/info/exclude" } },
+    ])("deny: $name $args", ({ name, args }) => {
+      expect(classify(name, args)).toBe("deny");
+    });
+
+    it("the .gitignore basename is NOT treated as inside .git/ (no over-broad match)", () => {
+      expect(classify("write_file", { path: ".gitignore" })).toBe("confirm");
+    });
+
+    it("non-protected writes inside the workspace stay confirm", () => {
+      expect(classify("write_file", { path: "src/a.ts" })).toBe("confirm");
+    });
+  });
+
+  describe("git ops that write or destroy repo state are denied (#63)", () => {
+    it.each([
+      "git config user.name mini",
+      "git reset --hard HEAD~1",
+      "git reset HEAD~1",
+      "git clean -fd",
+      "git checkout .",
+      "git checkout -- src/a.ts",
+    ])("deny: %s", (command) => {
+      expect(classify("run_command", { command })).toBe("deny");
+    });
+
+    it("read-only git ops stay auto-allowed", () => {
+      expect(classify("run_command", { command: "git status" })).toBe("allow");
+      expect(classify("run_command", { command: "git diff HEAD~1" })).toBe("allow");
+    });
+
+    it("branch checkout (non-destructive) still asks once", () => {
+      expect(classify("run_command", { command: "git checkout dev" })).toBe("confirm");
+    });
+  });
+
   describe("everything else asks once", () => {
     it.each([
       { name: "run_command", args: { command: "node build.js" } },

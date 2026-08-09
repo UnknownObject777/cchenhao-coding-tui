@@ -76,6 +76,34 @@ describe("composed approval gate", () => {
     await gate.request({ id: "2", name: "run_command", args: { command: "node build.js" } });
     expect(ask).toHaveBeenCalledTimes(2);
   });
+
+  describe("critical config files cannot be 'always'-remembered (#63)", () => {
+    it.each(["package.json", "package-lock.json", "tsconfig.json", ".github/workflows/ci.yml", ".agent.md", "AGENTS.md", ".agents/skills/x/SKILL.md"])(
+      "keeps asking for %s even after an 'always' answer",
+      async (path) => {
+        const { gate, ask, events } = setup("always");
+        const call = { id: "1", name: "write_file", args: { path } };
+        expect(await gate.request(call)).toBe("always");
+        expect(await gate.request(call)).toBe("always");
+        expect(ask).toHaveBeenCalledTimes(2);
+        expect(events.filter((e) => e.type === "approval.request")).toHaveLength(2);
+      },
+    );
+
+    it("non-critical writes still remember 'always' (#26 unchanged)", async () => {
+      const { gate, ask } = setup("always");
+      const call = { id: "1", name: "write_file", args: { path: "src/a.ts" } };
+      expect(await gate.request(call)).toBe("always");
+      expect(await gate.request(call)).toBe("allow");
+      expect(ask).toHaveBeenCalledTimes(1);
+    });
+
+    it("read_file on a critical path is unaffected (reads stay allowed)", async () => {
+      const { gate, ask } = setup();
+      expect(await gate.request({ id: "1", name: "read_file", args: { path: "package.json" } })).toBe("allow");
+      expect(ask).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("memoryKey", () => {

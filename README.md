@@ -33,7 +33,7 @@ mini-agent -p "任务" --output-format stream-json   # 事件逐行 JSON（管�
 | `Ctrl+O` | 折叠/展开最近的工具帧 |
 | `Ctrl+C` | 退出（干净恢复 raw mode） |
 
-审批规则（#25）：工具在注册处自声明审批分类（`ToolDefinition.approval`）——read 类（read_file / list_files / grep / glob / web_search / web_fetch / task_status）自动放行；write 类需确认且路径限工作区内；command 类走安全 pattern（ls、git status、npm test…）放行、危险 pattern（rm -rf、git push、sudo）直接拒绝；未声明分类的工具（含 task_stop）一律按 confirm 处理。`a` 答本会话不再问。
+审批规则（#25，#63）：工具在注册处自声明审批分类（`ToolDefinition.approval`）——read 类（read_file / list_files / grep / glob / web_search / web_fetch / task_status）自动放行；write 类需确认且路径限工作区内，`.git/**` 与工作区外（含 `~/.mini-agent/`、凭证文件）一律拒绝；command 类走安全 pattern（ls、git status、npm test…）放行、危险 pattern（rm -rf、git push、sudo、git config/reset/clean、git checkout --/.…）直接拒绝；未声明分类的工具（含 task_stop）一律按 confirm 处理。`a` 答本会话不再问——但关键文件（package.json / tsconfig.json / CI 配置 / .agent.md 等，见 `docs/dogfood-protocol.md`）写操作强制每次确认，`a` 不入记忆。自举狗食的安全协议见 `docs/dogfood-protocol.md`。
 
 命令执行与后台任务（#61）：`run_command` 同步执行默认 30s 超时（`timeout_ms` 可调，非正数回退默认）。`background=true` 启动后台任务，立即返回 `task <id>`、不阻塞 turn——输出持续落盘到 `<会话目录>/tasks/<id>.log`；模型用 `task_status`（read 类自动放行）轮询状态与累计输出、`task_stop`（未声明分类，默认 confirm）停止。后台默认超时 600s（覆盖 npm test / 构建这类长命令）、并行上限 8、会话结束（进程退出）即回收、不跨会话。后台不改变审批分类：危险 pattern 依旧直接拒绝，不因 background 绕过。
 
