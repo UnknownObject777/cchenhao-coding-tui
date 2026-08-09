@@ -5,7 +5,7 @@ import type { ToolExecutor } from "./executor.ts";
 import { registerSearchTools } from "./search.ts";
 import { resolveInside as resolveInsideWorkspace } from "./workspace.ts";
 
-/** 内置玩具工具：read_file / write_file / run_command / list_files / grep / glob。文件操作限制在工作区内。 */
+/** 内置玩具工具：read_file / write_file / edit_file / run_command / list_files / grep / glob。文件操作限制在工作区内。 */
 export function registerBuiltinTools(executor: ToolExecutor, workspace: string): void {
   const root = resolve(workspace);
 
@@ -37,6 +37,56 @@ export function registerBuiltinTools(executor: ToolExecutor, workspace: string):
       const full = resolveInside(String(args["path"]));
       await writeFile(full, String(args["content"]), "utf8");
       return `wrote ${full}`;
+    },
+  });
+
+  executor.register({
+    name: "edit_file",
+    description:
+      "Replace old_string with new_string in an existing UTF-8 file. old_string must match exactly (character-for-character, including whitespace) and appear exactly once unless replace_all is set.",
+    approval: "write",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Path relative to the workspace" },
+        old_string: { type: "string", description: "Exact text to find (must be unique)" },
+        new_string: { type: "string", description: "Replacement text" },
+        replace_all: { type: "boolean", description: "Replace every occurrence (default false)" },
+      },
+      required: ["path", "old_string", "new_string"],
+    },
+    execute: async (args) => {
+      const full = resolveInside(String(args["path"]));
+      const oldText = String(args["old_string"]);
+      const newText = String(args["new_string"]);
+      if (oldText === "") {
+        throw new Error("old_string must be a non-empty string");
+      }
+      let content: string;
+      try {
+        content = await readFile(full, "utf8");
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          throw new Error(`file not found: ${full}; use write_file to create it`);
+        }
+        throw error;
+      }
+      const occurrences = content.split(oldText).length - 1;
+      if (occurrences === 0) {
+        // 失败回退链（#56 决策）：精确匹配失败 → 可行动错误 → 模型重试 → 连续失败后由模型自行降级 write_file
+        throw new Error(
+          `String to replace not found in ${full}. edit_file requires an exact character-for-character match (including whitespace and indentation). ` +
+            `Re-read the file and retry with a more precise old_string; if you keep failing, use write_file with the full new content instead.`,
+        );
+      }
+      if (occurrences > 1 && args["replace_all"] !== true) {
+        throw new Error(
+          `old_string appears ${occurrences} times in ${full}; set replace_all=true to replace all, or include more surrounding context to make it unique.`,
+        );
+      }
+      const next = occurrences === 1 ? content.replace(oldText, newText) : content.split(oldText).join(newText);
+      await writeFile(full, next, "utf8");
+      return `replaced ${occurrences} occurrence(s) in ${full}`;
     },
   });
 
@@ -104,4 +154,9 @@ function killTree(child: ReturnType<typeof spawn>, done: () => void): void {
     child.kill("SIGKILL");
     done();
   }
+}
+
+/** 带 node 错误码(errno)的 Error 判别，用于 ENOENT 等分支。 */
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }

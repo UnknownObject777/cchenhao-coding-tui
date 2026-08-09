@@ -53,4 +53,80 @@ describe("builtin tools", () => {
     expect(result.ok).toBe(false);
     expect(result.output).toContain("timed out");
   }, 5000);
+
+  it("edit_file replaces a unique old_string", async () => {
+    await executor.execute("write_file", { path: "a.ts", content: "const x = 1;\nconsole.log(x);\n" });
+    const result = await executor.execute("edit_file", {
+      path: "a.ts",
+      old_string: "const x = 1;",
+      new_string: "const x = 2;",
+    });
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("const x = 2;\nconsole.log(x);\n");
+  });
+
+  it("edit_file rejects a missing old_string with an actionable error", async () => {
+    await executor.execute("write_file", { path: "a.ts", content: "const x = 1;\n" });
+    const result = await executor.execute("edit_file", {
+      path: "a.ts",
+      old_string: "const y = 2;",
+      new_string: "const z = 3;",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("not found");
+    expect(result.output).toContain("write_file"); // 降级指引
+  });
+
+  it("edit_file rejects a non-unique old_string unless replace_all is set", async () => {
+    await executor.execute("write_file", { path: "a.ts", content: "x = 1;\nx = 1;\n" });
+    const without = await executor.execute("edit_file", {
+      path: "a.ts",
+      old_string: "x = 1;",
+      new_string: "y = 9;",
+    });
+    expect(without.ok).toBe(false);
+    expect(without.output).toContain("2 times");
+    expect(without.output).toContain("replace_all");
+  });
+
+  it("edit_file replaces every occurrence when replace_all is true", async () => {
+    await executor.execute("write_file", { path: "a.ts", content: "x = 1;\nx = 1;\n" });
+    const result = await executor.execute("edit_file", {
+      path: "a.ts",
+      old_string: "x = 1;",
+      new_string: "y = 9;",
+      replace_all: true,
+    });
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("y = 9;\ny = 9;\n");
+  });
+
+  it("edit_file refuses to touch files outside the workspace", async () => {
+    const result = await executor.execute("edit_file", {
+      path: "../escape.txt",
+      old_string: "a",
+      new_string: "b",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("edit_file rejects an empty old_string", async () => {
+    await executor.execute("write_file", { path: "a.ts", content: "const x = 1;\n" });
+    const result = await executor.execute("edit_file", { path: "a.ts", old_string: "", new_string: "b" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("edit_file on a missing file points the model to write_file", async () => {
+    const result = await executor.execute("edit_file", {
+      path: "nope.ts",
+      old_string: "a",
+      new_string: "b",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("write_file");
+  });
+
+  it("edit_file is declared as a write-class approval tool", async () => {
+    expect(executor.approvalKind("edit_file")).toBe("write");
+  });
 });

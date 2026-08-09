@@ -15,8 +15,10 @@ import { Rebuilder, WireEventSink, WireService, type RebuiltMessage } from "./en
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
 Your workspace is the current directory. \
-Use the provided tools (read_file / write_file / run_command) to act on files, \
-then answer briefly. Paths are relative to the workspace.`;
+Use the provided tools (read_file / write_file / edit_file / run_command) to act on files, \
+then answer briefly. Paths are relative to the workspace. \
+For a small, targeted change to an existing file use edit_file (old_string/new_string); \
+use write_file for new files or large rewrites.`;
 
 export interface Agent {
   loop: Loop;
