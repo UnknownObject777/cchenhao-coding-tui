@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPACT_TAIL_FRACTION,
   CONTEXT_TOKEN_BUDGET,
   estimateTokens,
+  pickRetainedTail,
+  splitForCompaction,
+  SUMMARY_MARKER,
+  summaryMessage,
   truncateToWindow,
 } from "../src/engine/context.ts";
 import { EventBus, type EngineEvent } from "../src/engine/events.ts";
@@ -75,14 +80,94 @@ describe("truncateToWindow (#31)", () => {
   });
 });
 
+describe("compaction helpers (#57)", () => {
+  const big = (n: number): string => "z".repeat(n);
+
+  it("pickRetainedTail keeps the newest whole groups within the tail budget", () => {
+    const messages: Message[] = [
+      { role: "user", content: big(200) }, // 50 tokens
+      { role: "assistant", content: big(200) }, // 50 tokens
+      { role: "user", content: "recent" }, // ~1 token
+    ];
+    const tail = pickRetainedTail(messages, 60);
+    expect(tail).toEqual([
+      { role: "assistant", content: big(200) },
+      { role: "user", content: "recent" },
+    ]);
+    expect(estimateTokens(tail)).toBeLessThanOrEqual(60);
+  });
+
+  it("pickRetainedTail never splits a toolCalls group from its tool replies", () => {
+    const messages: Message[] = [
+      { role: "user", content: big(400) },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "read_file", args: { path: "a" } }],
+      },
+      { role: "tool", toolCallId: "c1", name: "read_file", content: big(200) },
+      { role: "user", content: "latest" },
+    ];
+    const tail = pickRetainedTail(messages, 60);
+    expect(tail).toEqual([
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "read_file", args: { path: "a" } }],
+      },
+      { role: "tool", toolCallId: "c1", name: "read_file", content: big(200) },
+      { role: "user", content: "latest" },
+    ]);
+  });
+
+  it("pickRetainedTail keeps the newest group even when it alone busts the budget", () => {
+    const messages: Message[] = [
+      { role: "user", content: big(10000) },
+      { role: "user", content: "newest" },
+    ];
+    const tail = pickRetainedTail(messages, 10);
+    expect(tail).toEqual([{ role: "user", content: "newest" }]);
+  });
+
+  it("splitForCompaction separates system, summarizable head and retained tail", () => {
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: big(200) },
+      { role: "user", content: "recent" },
+    ];
+    const { system, head, tail } = splitForCompaction(messages, 10);
+    expect(system).toEqual([{ role: "system", content: "sys" }]);
+    expect(head).toEqual([{ role: "user", content: big(200) }]);
+    expect(tail).toEqual([{ role: "user", content: "recent" }]);
+  });
+
+  it("splitForCompaction yields an empty head when everything fits the tail", () => {
+    const messages: Message[] = [{ role: "system", content: "sys" }, { role: "user", content: "only" }];
+    const { head } = splitForCompaction(messages, 1000);
+    expect(head).toEqual([]);
+  });
+
+  it("summaryMessage carries the marker and the summary text", () => {
+    expect(summaryMessage("handoff")).toEqual({
+      role: "user",
+      content: `${SUMMARY_MARKER}\nhandoff`,
+    });
+  });
+});
+
 describe("loop context window enforcement (#31)", () => {
-  it("truncates before the request and reports usage", async () => {
+  it("compacts before the request when over budget and reports usage", async () => {
     const bus = new EventBus();
     const events: EngineEvent[] = [];
     bus.on("context.usage", (p) => events.push({ type: "context.usage", ...p }));
+    bus.on("context.compacted", (p) => events.push({ type: "context.compacted", ...p }));
     bus.on("turn.ended", (p) => events.push({ type: "turn.ended", ...p }));
 
-    const llm = new FakeLLM([[{ type: "text", text: "ok" }, { type: "finish", reason: "stop" }]]);
+    // 脚本第 0 轮 = 摘要调用,第 1 轮 = 真实请求
+    const llm = new FakeLLM([
+      [{ type: "text", text: "handoff summary" }, { type: "finish", reason: "stop" }],
+      [{ type: "text", text: "ok" }, { type: "finish", reason: "stop" }],
+    ]);
     const loop = new Loop({
       llm,
       executor: new ToolExecutor(),
@@ -90,20 +175,26 @@ describe("loop context window enforcement (#31)", () => {
       systemPrompt: "sys",
       contextTokenBudget: 100,
     });
-    // 预算 100 tokens：80 触发截断，60 目标。灌 3 条 800 字符（200 tokens）的历史
+    // 预算 100：80 触发压缩。灌 4 条 100 字符（25 tokens）历史 + prompt ≈ 102 tokens
     loop.loadHistory([
-      { role: "user", content: "a".repeat(800) },
-      { role: "assistant", content: "b".repeat(800) },
-      { role: "user", content: "c".repeat(800) },
+      { role: "user", content: "a".repeat(100) },
+      { role: "assistant", content: "b".repeat(100) },
+      { role: "user", content: "c".repeat(100) },
+      { role: "assistant", content: "d".repeat(100) },
     ]);
 
     await loop.runTurn("hi");
 
-    // 截断后请求里的消息应显著少于灌入的
-    const request = llm.requests[0]!;
-    expect(request.length).toBeLessThan(4);
+    // 摘要调用先发生：第一个请求 = 摘要系统 prompt + 可压缩头部
+    const summaryRequest = llm.requests[0]!;
+    expect(summaryRequest[0]!.role).toBe("system");
+    expect(summaryRequest[0]!.content).toContain("压缩");
+    // 真实请求从压缩后的状态出发：system + 摘要 + 保留尾部 + 新 prompt
+    const request = llm.requests[1]!;
     expect(request[0]).toEqual({ role: "system", content: "sys" });
-    expect(events.some((e) => e.type === "context.usage")).toBe(true);
+    expect(request.some((m) => m.role === "user" && m.content.includes("handoff summary"))).toBe(true);
+    expect(request.at(-1)).toEqual({ role: "user", content: "hi" });
+    expect(events.some((e) => e.type === "context.compacted")).toBe(true);
     expect(events.at(-1)).toMatchObject({ type: "turn.ended", reason: "finish" });
   });
 

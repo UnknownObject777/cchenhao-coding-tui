@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EngineEvent } from "../src/engine/events.ts";
-import { Rebuilder, WireService } from "../src/engine/wire.ts";
+import { SUMMARY_MARKER } from "../src/engine/context.ts";
+import { Rebuilder, WireEventSink, WireService } from "../src/engine/wire.ts";
 
 const turn1: EngineEvent[] = [
   { type: "turn.started", turnId: 1, prompt: "hello" },
@@ -132,5 +133,103 @@ describe("wire", () => {
       { role: "user", text: "hi" },
       { role: "tool", name: "write_file", args: { path: "a.txt" }, ok: false, output: "denied" },
     ]);
+  });
+
+  it("rebuildForContext treats a compaction event as a context reset point", async () => {
+    const events: EngineEvent[] = [
+      { type: "turn.started", turnId: 1, prompt: "old ask" },
+      { type: "assistant.delta", text: "x".repeat(400) },
+      { type: "turn.ended", turnId: 1, reason: "finish" },
+      { type: "turn.started", turnId: 2, prompt: "recent ask" },
+      { type: "assistant.delta", text: "recent answer" },
+      { type: "turn.ended", turnId: 2, reason: "finish" },
+      { type: "context.compacted", summary: "handoff", tailTokens: 10 },
+      { type: "turn.started", turnId: 3, prompt: "new ask" },
+      { type: "assistant.delta", text: "new answer" },
+      { type: "turn.ended", turnId: 3, reason: "finish" },
+    ];
+    const wire = new WireService(wirePath);
+    for (const event of events) await wire.append(event);
+
+    const messages = new Rebuilder().rebuildForContext(await wire.readAll());
+
+    // 压缩点 = 上下文复位点:旧对话被摘要替换,仅保留按 tailTokens 挑出的最近尾部,
+    // 之后的事件照常折叠 —— 重建上下文 == 压缩后状态(#57)
+    expect(messages).toEqual([
+      { role: "user", content: `${SUMMARY_MARKER}\nhandoff` },
+      { role: "user", content: "recent ask" },
+      { role: "assistant", content: "recent answer" },
+      { role: "user", content: "new ask" },
+      { role: "assistant", content: "new answer" },
+    ]);
+  });
+
+  it("rebuild (UI channel) ignores the compaction event and keeps the full transcript", async () => {
+    const events: EngineEvent[] = [
+      { type: "turn.started", turnId: 1, prompt: "old ask" },
+      { type: "assistant.delta", text: "old answer" },
+      { type: "turn.ended", turnId: 1, reason: "finish" },
+      { type: "context.compacted", summary: "handoff", tailTokens: 10 },
+      { type: "turn.started", turnId: 2, prompt: "new ask" },
+      { type: "assistant.delta", text: "new answer" },
+      { type: "turn.ended", turnId: 2, reason: "finish" },
+    ];
+    const wire = new WireService(wirePath);
+    for (const event of events) await wire.append(event);
+
+    const messages = new Rebuilder().rebuild(await wire.readAll());
+
+    expect(messages).toEqual([
+      { role: "user", text: "old ask" },
+      { role: "assistant", text: "old answer" },
+      { role: "user", text: "new ask" },
+      { role: "assistant", text: "new answer" },
+    ]);
+  });
+});
+
+describe("WireEventSink", () => {
+  it("preserves append order across interleaved calls", async () => {
+    const dir = makeTempDir("wire-sink-test-");
+    try {
+      const wirePath = join(dir, "wire.jsonl");
+      const sink = new WireEventSink(new WireService(wirePath));
+      for (const event of turn1) sink.append(event);
+      await sink.flush();
+
+      const rows = await new WireService(wirePath).readAll();
+      expect(rows.map((r) => r.event)).toEqual(turn1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a failed append is reported and does not kill later appends; flush never throws", async () => {
+    const dir = makeTempDir("wire-sink-test-");
+    try {
+      const wirePath = join(dir, "wire.jsonl");
+      const errors: unknown[] = [];
+      let calls = 0;
+      // 第一次 append 失败，之后恢复（如瞬时 ENOSPC/锁冲突）
+      const flaky = {
+        append: async (event: EngineEvent) => {
+          calls += 1;
+          if (calls === 1) throw new Error("disk full");
+          return new WireService(wirePath).append(event);
+        },
+      };
+      const sink = new WireEventSink(flaky, (e) => errors.push(e));
+
+      sink.append(turn1[0]!);
+      sink.append(turn1[1]!);
+      await expect(sink.flush()).resolves.toBeUndefined();
+
+      expect(errors).toHaveLength(1);
+      expect((errors[0] as Error).message).toBe("disk full");
+      const rows = await new WireService(wirePath).readAll();
+      expect(rows.map((r) => r.event)).toEqual([turn1[1]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -30,7 +30,7 @@
 
 - 事件契约：`approval.request`（gate 侧，带规则级别）/ `approval.decision`（loop 侧），进 wire 可重放。
 - loop 暂停方式：注入异步 `ApprovalGate`，`tool.call` 发布后、`execute` 前 await；EventBus 保持单向。
-- 规则引擎：`engine/approval/rules.ts` 表驱动（allow/confirm/deny）；危险 pattern 与跨工作区写直接 deny。
+- 规则引擎：`engine/approval/rules.ts` 表驱动（allow/confirm/deny）；危险 pattern 与跨工作区写直接 deny。工具分类（read/write/command）由 `ToolDefinition.approval` 自声明，规则引擎不维护工具名清单。
 - 会话记忆：`always` 按「工具名 + 首字符串参数前两段」记忆，会话级内存；恢复时从 wire 回放。
 - print 模式：`--yes` 放行写/执行，危险拦截不绕过；TUI 模式：消息区内联审批帧，y/n/a/esc。
 
@@ -64,8 +64,8 @@
 
 ## 验收标准
 
-**作者一周内用它完成 ≥3 个真实小任务**（记录 prompt、卡点、体感）——执行票 #50，完成后地图 #2 收图。
+**作者一周内用它完成 ≥3 个真实小任务**（记录 prompt、卡点、体感）——执行票 #50（已完成，2026-08-08 关闭）；地图 #2 同日收图，第一阶段就此收尾。
 
 ## Out of scope（重申）
 
-subagent / 多 agent、MCP / 插件系统、真正的上下文压缩（compaction）、图片/多模态输入。超出一个 session 级玩具的体量，真要做画新地图。
+subagent / 多 agent、MCP / 插件系统、图片/多模态输入。超出一个 session 级玩具的体量，真要做画新地图。~~真正的上下文压缩（compaction）~~ 已由 #57 落地：80% 预算触发、同模型一次摘要调用、保留最近尾部，详见 engine/context.ts 与 engine/loop.ts。

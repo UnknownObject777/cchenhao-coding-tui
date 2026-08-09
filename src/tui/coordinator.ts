@@ -21,7 +21,7 @@ import { UserMessageComponent } from "./components/messages/user-message.ts";
 /** coordinator 需要的引擎能力面（窄接口，结构类型；bootstrap.Agent 天然满足）。 */
 export interface CoordinatorAgent {
   bus: EventBus;
-  loop: Pick<Loop, "runTurn" | "reset">;
+  loop: Pick<Loop, "runTurn" | "reset" | "compact">;
   wire: Pick<WireService, "clear">;
 }
 
@@ -76,8 +76,8 @@ export class TuiCoordinator {
 
   /** 测试与 editor.onSubmit 共用的入口。 */
   async handleSubmit(text: string): Promise<void> {
-    // turn 进行中一切提交都忽略（含 slash）：/clear /delete 会清 transcript/wire，
-    // 与流式更新和 append 队列竞争
+    // 任何「不可提交窗口」（turn 进行中、slash 执行中）一切提交都忽略：
+    // /clear /delete 会清 transcript/wire，与流式更新和 append 队列竞争
     if (this.busy) return;
 
     const parsed = parseSlashCommand(text);
@@ -104,7 +104,14 @@ export class TuiCoordinator {
       this.deps.tui.requestRender();
       return;
     }
-    await command.execute(this.commandContext());
+    // slash 执行期同样置 busy：/delete 的 wire.clear() 在飞时若放行新 turn，
+    // append 会与 rm 竞态（busy 闸必须双向）
+    this.setBusy(true);
+    try {
+      await command.execute(this.commandContext());
+    } finally {
+      this.setBusy(false);
+    }
     this.deps.tui.requestRender();
   }
 
@@ -118,6 +125,10 @@ export class TuiCoordinator {
       deleteSession: async () => {
         clearConversation();
         await this.deps.agent.wire.clear();
+      },
+      // /compact：只缩引擎上下文，transcript 原样保留；反馈靠下一轮 footer 用量回落
+      compactContext: async () => {
+        await this.deps.agent.loop.compact();
       },
     };
   }

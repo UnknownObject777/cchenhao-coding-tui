@@ -19,6 +19,8 @@ export interface EngineEvents {
   "approval.decision": { id: string; decision: "allow" | "always" | "deny" };
   /** 上下文占用（#32）：每轮 LLM 请求前与 turn 收尾时发布，footer 显示用。 */
   "context.usage": { estimatedTokens: number; budgetTokens: number };
+  /** 上下文压缩（#57）：旧消息被摘要替换、保留最近尾部；wire 重建以此为上下文复位点。 */
+  "context.compacted": { summary: string; tailTokens: number };
   "turn.ended": { turnId: number; reason: "finish" | "error"; error?: string };
 }
 
@@ -37,6 +39,7 @@ export const ENGINE_EVENT_NAMES: EngineEventName[] = [
   "approval.request",
   "approval.decision",
   "context.usage",
+  "context.compacted",
   "turn.ended",
 ];
 

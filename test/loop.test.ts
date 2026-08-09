@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EventBus, type EngineEvent } from "../src/engine/events.ts";
 import type { ApprovalGate } from "../src/engine/approval/gate.ts";
 import { FakeLLM } from "../src/engine/llm/fake.ts";
+import type { LLMRequester, Message, ModelEvent, ToolSpec } from "../src/engine/llm/types.ts";
 import { Loop } from "../src/engine/loop.ts";
 import { ToolExecutor } from "../src/engine/tools/executor.ts";
-import { WireService } from "../src/engine/wire.ts";
+import { WireEventSink, WireService } from "../src/engine/wire.ts";
 
 function setup(
   script: ConstructorParameters<typeof FakeLLM>[0],
@@ -38,7 +39,7 @@ function setup(
     executor,
     bus,
     systemPrompt: "you are a toy",
-    ...(wirePath ? { wire: new WireService(wirePath) } : {}),
+    ...(wirePath ? { sink: new WireEventSink(new WireService(wirePath)) } : {}),
     ...(approvalGate ? { approvalGate } : {}),
   });
   return { loop, events, llm };
@@ -252,5 +253,104 @@ describe("loop", () => {
       ok: true,
       output: "contents of a.txt",
     });
+  });
+
+  it("compact() is a no-op when there is nothing to compact", async () => {
+    const llm = new FakeLLM([[{ type: "text", text: "ok" }, { type: "finish", reason: "stop" }]]);
+    const loop = new Loop({ llm, executor: new ToolExecutor(), bus: new EventBus(), systemPrompt: "sys" });
+
+    expect(await loop.compact()).toBe(false);
+    loop.loadHistory([{ role: "user", content: "hi" }]); // 只有一条消息,尾部就是它
+    expect(await loop.compact()).toBe(false);
+    expect(llm.requests).toHaveLength(0); // 没有可压缩内容就不烧 LLM 调用
+  });
+
+  it("compact() summarizes old messages, records the event and the next request starts compacted", async () => {
+    const dir = makeTempDir("compact-test-");
+    try {
+      const wirePath = join(dir, "wire.jsonl");
+      const bus = new EventBus();
+      const events: EngineEvent[] = [];
+      bus.on("context.compacted", (p) => events.push({ type: "context.compacted", ...p }));
+      const llm = new FakeLLM([
+        [{ type: "text", text: "handoff" }, { type: "finish", reason: "stop" }],
+        [{ type: "text", text: "ok" }, { type: "finish", reason: "stop" }],
+      ]);
+      const loop = new Loop({
+        llm,
+        executor: new ToolExecutor(),
+        bus,
+        systemPrompt: "sys",
+        contextTokenBudget: 100,
+        sink: new WireEventSink(new WireService(wirePath)),
+      });
+      loop.loadHistory([
+        { role: "user", content: "a".repeat(100) },
+        { role: "assistant", content: "b".repeat(100) },
+        { role: "user", content: "c".repeat(100) },
+        { role: "assistant", content: "d".repeat(100) },
+      ]);
+
+      expect(await loop.compact()).toBe(true);
+
+      // 压缩后真实请求从 [system, 摘要, 保留尾部] 出发
+      await loop.runTurn("hi");
+      const request = llm.requests[1]!;
+      expect(request[0]).toEqual({ role: "system", content: "sys" });
+      expect(request.some((m) => m.role === "user" && m.content.includes("handoff"))).toBe(true);
+      expect(request.at(-1)).toEqual({ role: "user", content: "hi" });
+
+      // 压缩是事实:进 wire 事件流(runTurn 收尾 flush 已落盘)
+      expect(events.find((e) => e.type === "context.compacted")).toMatchObject({
+        type: "context.compacted",
+        summary: "handoff",
+      });
+      const rows = await new WireService(wirePath).readAll();
+      expect(rows.some((r) => r.event.type === "context.compacted")).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to sliding-window truncation when the summary call fails", async () => {
+    const bus = new EventBus();
+    const events: EngineEvent[] = [];
+    bus.on("context.compacted", (p) => events.push({ type: "context.compacted", ...p }));
+    bus.on("turn.ended", (p) => events.push({ type: "turn.ended", ...p }));
+
+    const requests: Message[][] = [];
+    let calls = 0;
+    const flaky = {
+      async *request(messages: Message[], _tools: ToolSpec[]): AsyncIterable<ModelEvent> {
+        requests.push(structuredClone(messages));
+        calls += 1;
+        if (calls === 1) throw new Error("summary call down");
+        yield { type: "text", text: "ok" };
+        yield { type: "finish", reason: "stop" };
+      },
+    } as unknown as LLMRequester;
+
+    const loop = new Loop({
+      llm: flaky,
+      executor: new ToolExecutor(),
+      bus,
+      systemPrompt: "sys",
+      contextTokenBudget: 100,
+    });
+    loop.loadHistory([
+      { role: "user", content: "a".repeat(100) },
+      { role: "assistant", content: "b".repeat(100) },
+      { role: "user", content: "c".repeat(100) },
+      { role: "assistant", content: "d".repeat(100) },
+    ]);
+
+    await loop.runTurn("hi");
+
+    // 摘要调用失败 → 不发布压缩事件,真实请求从截断窗口出发
+    expect(events.some((e) => e.type === "context.compacted")).toBe(false);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]![0]).toEqual({ role: "system", content: "sys" });
+    expect(requests[1]!.at(-1)).toEqual({ role: "user", content: "hi" });
+    expect(events.at(-1)).toMatchObject({ type: "turn.ended", reason: "finish" });
   });
 });

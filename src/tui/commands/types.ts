@@ -7,6 +7,8 @@ export interface SlashCommandContext {
   clearConversation(): void;
   /** 删除当前会话 wire 记录并清空对话。 */
   deleteSession(): Promise<void>;
+  /** 压缩上下文（#57）：摘要早期对话、保留最近内容；不动 transcript。 */
+  compactContext(): Promise<void>;
 }
 
 export interface SlashCommandDefinition {

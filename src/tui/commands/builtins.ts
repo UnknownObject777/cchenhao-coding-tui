@@ -13,5 +13,10 @@ export function builtinCommands(): SlashCommandDefinition[] {
       description: "删除当前会话的 wire 记录并清空对话",
       execute: (ctx) => ctx.deleteSession(),
     },
+    {
+      name: "compact",
+      description: "压缩上下文：把早期对话摘要化，保留最近内容（/clear 的温和替代）",
+      execute: (ctx) => ctx.compactContext(),
+    },
   ];
 }

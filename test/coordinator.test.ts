@@ -31,6 +31,7 @@ interface CoordinatorFixture {
   bus: EventBus;
   runTurn: ReturnType<typeof vi.fn>;
   loopReset: ReturnType<typeof vi.fn>;
+  loopCompact: ReturnType<typeof vi.fn>;
   wire: WireService;
   onExit: ReturnType<typeof vi.fn>;
   h: ReturnType<typeof createTuiHarness>;
@@ -51,12 +52,14 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
 
   const runTurn = vi.fn<(prompt: string) => Promise<void>>().mockResolvedValue(undefined);
   const loopReset = vi.fn();
+  const loopCompact = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
   const wire = new WireService(join(dir, "wire.jsonl"));
   const agent = {
-    loop: { runTurn, reset: loopReset } as unknown as Loop,
+    loop: { runTurn, reset: loopReset, compact: loopCompact } as unknown as Loop,
     bus,
     wire,
     workspace: dir,
+    approvalKind: () => undefined,
     model: "stub-llm",
     sessionPath: join(dir, "wire.jsonl"),
     history: [],
@@ -68,7 +71,7 @@ async function setupCoordinator(): Promise<CoordinatorFixture> {
   const coordinator = new TuiCoordinator({ tui: h.tui, editor, chat, agent, onExit });
   coordinator.start();
   await h.tui.start();
-  return { coordinator, bus, runTurn, loopReset, wire, onExit, h, editor, chat, dir };
+  return { coordinator, bus, runTurn, loopReset, loopCompact, wire, onExit, h, editor, chat, dir };
 }
 
 describe("TuiCoordinator", () => {
@@ -111,6 +114,12 @@ describe("TuiCoordinator", () => {
 
     expect(await fixture.wire.readAll()).toEqual([]);
     expect(fixture.loopReset).toHaveBeenCalledOnce();
+  });
+
+  it("/compact runs engine compaction without starting a turn", async () => {
+    await fixture.coordinator.handleSubmit("/compact");
+    expect(fixture.loopCompact).toHaveBeenCalledOnce();
+    expect(fixture.runTurn).not.toHaveBeenCalled();
   });
 
   it("unknown slash command shows an error hint instead of a turn", async () => {
@@ -158,6 +167,44 @@ describe("TuiCoordinator", () => {
     await fixture.coordinator.handleSubmit("/clear");
 
     expect(fixture.loopReset).not.toHaveBeenCalled();
+  });
+
+  it("ignores submits while a slash command is executing", async () => {
+    // busy 闸必须双向：/delete 的 wire.clear() 在飞时放行的 turn 会与 append 竞态
+    let releaseSlash: () => void = () => {};
+    const slowCommand = {
+      name: "slow",
+      description: "slow test command",
+      execute: () =>
+        new Promise<void>((resolve) => {
+          releaseSlash = resolve;
+        }),
+    };
+    const coordinator = new TuiCoordinator({
+      tui: fixture.h.tui,
+      editor: fixture.editor,
+      chat: fixture.chat,
+      agent: {
+        bus: fixture.bus,
+        loop: { runTurn: fixture.runTurn, reset: fixture.loopReset } as unknown as Loop,
+        wire: fixture.wire,
+      },
+      commands: [slowCommand],
+      onExit: fixture.onExit,
+    });
+    coordinator.start();
+
+    const slash = coordinator.handleSubmit("/slow");
+    await vi.waitFor(() => expect(fixture.editor.disableSubmit).toBe(true));
+
+    await coordinator.handleSubmit("应被忽略的 turn");
+    expect(fixture.runTurn).not.toHaveBeenCalled();
+
+    releaseSlash();
+    await slash;
+    expect(fixture.editor.disableSubmit).toBe(false);
+
+    coordinator.stop();
   });
 
   it("Ctrl+C triggers onExit", async () => {
