@@ -1,5 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { makeTempDir } from "./helpers/temp-dir.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TodoStore } from "../src/engine/todo.ts";
@@ -32,6 +32,13 @@ describe("builtin tools", () => {
   it("refuses to write outside the workspace", async () => {
     const result = await executor.execute("write_file", { path: "../escape.txt", content: "x" });
     expect(result.ok).toBe(false);
+  });
+
+  it("run_command clamps cwd to the workspace root, not the session cwd (#75)", async () => {
+    // 测试进程的 cwd 是仓库根，与临时工作区不同；命令打印出的必须是被钳制到工作区根后的 cwd
+    const result = await executor.execute("run_command", { command: process.platform === "win32" ? "cd" : "pwd" });
+    expect(result.ok).toBe(true);
+    assertSameResolvedPath(result.output.trim(), dir);
   });
 
   it("run_command returns stdout", async () => {
@@ -132,4 +139,53 @@ describe("builtin tools", () => {
   it("edit_file is declared as a write-class approval tool", async () => {
     expect(executor.approvalKind("edit_file")).toBe("write");
   });
+
+  describe.runIf(dirSymlinkSupported())("run_command cwd through a symlinked workspace (#75)", () => {
+    it("spawns in the realpath'd zone root, not the symlink path", async () => {
+      const real = makeTempDir("tools-symlink-real-");
+      const link = join(dirname(real), `tools-symlink-link-${process.pid}-${Math.random().toString(36).slice(2)}`);
+      try {
+        symlinkSync(real, link, process.platform === "win32" ? "junction" : "dir");
+        const linkedExecutor = new ToolExecutor();
+        registerBuiltinTools(linkedExecutor, link, new TodoStore());
+        const result = await linkedExecutor.execute("run_command", {
+          command: process.platform === "win32" ? "cd" : "pwd",
+        });
+        expect(result.ok).toBe(true);
+        // 强制 CWD = canonical 区根（#74 区判定唯一入口的 realpath 根），与文件工具同一套根
+        assertSameResolvedPath(result.output.trim(), real);
+      } finally {
+        rmSync(link, { recursive: true, force: true });
+        rmSync(real, { recursive: true, force: true });
+      }
+    });
+  });
 });
+
+/** cmd 的 cd / sh 的 pwd 输出与期望路径解析后一致（Windows 上大小写不敏感比较）。 */
+function assertSameResolvedPath(printed: string, expectedDir: string): void {
+  const a = resolve(printed);
+  const b = resolve(expectedDir);
+  if (process.platform === "win32") {
+    expect(a.toLowerCase()).toBe(b.toLowerCase());
+  } else {
+    expect(a).toBe(b);
+  }
+}
+
+/** 目录级链接探测（win32 用免提权的 junction，POSIX 用 dir symlink）；失败整组跳过。 */
+function dirSymlinkSupported(): boolean {
+  try {
+    const real = makeTempDir("tools-symlink-probe-real-");
+    const link = join(dirname(real), `tools-symlink-probe-link-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    try {
+      symlinkSync(real, link, process.platform === "win32" ? "junction" : "dir");
+      return true;
+    } finally {
+      rmSync(link, { recursive: true, force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
+  } catch {
+    return false;
+  }
+}

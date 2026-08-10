@@ -148,10 +148,15 @@ function classifyRooted(zoneRootReal: string, path: string): PathZone {
 
 /** 唯一的路径区判定入口：输入路径经 realpath 解析后判定区内 / 区外 / 保护段。 */
 export function classifyPathZone(zoneRoot: string, path: string): PathZone {
-  return classifyRooted(realpathDeep(resolve(zoneRoot)), path);
+  return classifyRooted(canonicalZoneRoot(zoneRoot), path);
+}
+
+/** 规范化区根（realpath 后的 canonical 绝对路径）：区判定入口与 run_command 的 spawn CWD 共用同一根（#74/#75）。 */
+export function canonicalZoneRoot(zoneRoot: string): string {
+  return realpathDeep(resolve(zoneRoot));
 }
 
 /** realpath 规范化的区内解析（供写工具拿到真实落盘路径；不抛错，调用方自行先判区）。 */
 export function resolveZonePath(zoneRoot: string, path: string): string {
-  return realpathDeep(resolve(realpathDeep(resolve(zoneRoot)), path));
+  return realpathDeep(resolve(canonicalZoneRoot(zoneRoot), path));
 }

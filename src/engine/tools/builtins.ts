@@ -1,13 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import type { TodoStore } from "../todo.ts";
 import type { ToolExecutor } from "./executor.ts";
 import { registerSearchTools } from "./search.ts";
 import { registerTaskTools, TaskManager, DEFAULT_BACKGROUND_TIMEOUT_MS, DEFAULT_COMMAND_TIMEOUT_MS } from "./task.ts";
 import { registerTodoTool } from "./todo.ts";
 import { resolveInside as resolveInsideWorkspace } from "./workspace.ts";
+import { canonicalZoneRoot } from "../zone.ts";
 
 /** 会话结束（进程退出）即回收后台任务：模块级单钩子，避免多次装配累积 exit 监听器。 */
 const registeredManagers = new Set<TaskManager>();
@@ -27,7 +28,7 @@ export function registerBuiltinTools(
   todos: TodoStore,
   options?: { sessionPath?: string; taskManager?: TaskManager },
 ): void {
-  const root = resolve(workspace);
+  const root = canonicalZoneRoot(workspace);
 
   const resolveInside = (path: string): string => resolveInsideWorkspace(root, path);
 
@@ -153,6 +154,8 @@ export function registerBuiltinTools(
             ? DEFAULT_BACKGROUND_TIMEOUT_MS
             : DEFAULT_COMMAND_TIMEOUT_MS;
       const command = String(args["command"]);
+      // #75 CWD 钳制：spawn 的 cwd 固定为 canonical 区根（与 #74 区判定同一根），不继承会话 cwd；
+      // 命令侧的 cd .. / 绝对路径越界由审批层静态判定（出区必批，见 rules.ts）。
       if (background) return tasks.start(command, root, timeout);
       return runShell(command, root, timeout);
     },

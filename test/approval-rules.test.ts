@@ -118,6 +118,56 @@ describe("approval rules (classifyCall)", () => {
     });
   });
 
+  describe("command escape intent is never auto-allowed (#75)", () => {
+    // 静态判定只是启发式（#71：8/15 subagent 绕过实证）：目标「可见+必批」——命中出区意图即确认，不追求不可绕过
+    const outsideAbs = process.platform === "win32" ? "C:\\Windows\\System32\\x.txt" : "/etc/passwd";
+    const homeRef = process.platform === "win32" ? "%USERPROFILE%\\x" : "~/x";
+
+    it.each([
+      // cd 逃逸：相对 .. 上溯出区根
+      "cd ..",
+      "cd ../..",
+      "cd ../../x",
+      "cd .. && npm test",
+      "cd ..\\..\\x",
+      "pushd ..",
+      // 绝对路径指向区外
+      `cd ${outsideAbs}`,
+      `cat ${outsideAbs}`,
+      `ls ${outsideAbs}`,
+      `cat ${outsideAbs} 2>/dev/null`,
+      // .. 出现在普通参数里（cat ../secret 走的是 ^cat 安全 pattern，命中出区必须压过 allow）
+      "ls ..",
+      "cat ../secret.txt",
+      "cat ../../src/x",
+      "git status ..",
+      "pwd && cd ..",
+      // 家目录引用（~、$HOME、%USERPROFILE%）在区外
+      "cd ~",
+      "cd ~/x",
+      `cat ${homeRef}`,
+      "cd $HOME",
+      "echo $HOME/.ssh/id_rsa",
+      // 旗标携带区外路径
+      "npm run build -- --outDir=../dist",
+      "mkdir -p ../build",
+    ])("confirm (out-of-zone, must-approve): %s", (command) => {
+      expect(classify("run_command", { command })).toBe("confirm");
+    });
+
+    it("escape intent combined with a dangerous pattern still denies", () => {
+      expect(classify("run_command", { command: "rm -rf ../node_modules" })).toBe("deny");
+      expect(classify("run_command", { command: "git push && cd .." })).toBe("deny");
+    });
+
+    it("in-zone commands stay auto-allowed (#75 不误伤)", () => {
+      expect(classify("run_command", { command: "ls ." })).toBe("allow");
+      expect(classify("run_command", { command: "cat ./README.md" })).toBe("allow");
+      expect(classify("run_command", { command: "git log HEAD..HEAD~1" })).toBe("allow");
+      expect(classify("run_command", { command: "ls src/a.ts" })).toBe("allow");
+    });
+  });
+
   describe("everything else asks once", () => {
     it.each([
       { name: "run_command", args: { command: "node build.js" } },

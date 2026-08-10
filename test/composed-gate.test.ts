@@ -77,6 +77,22 @@ describe("composed approval gate", () => {
     expect(ask).toHaveBeenCalledTimes(2);
   });
 
+  it("out-of-zone commands fall into human approval, never auto-allow (#75)", async () => {
+    const { gate, ask, events } = setup("allow");
+    const decision = await gate.request({ id: "1", name: "run_command", args: { command: "ls .." } });
+    expect(decision).toBe("allow"); // 人工批准后放行（出区必批，但不拒绝）
+    expect(ask).toHaveBeenCalledOnce();
+    expect(events).toEqual([
+      { type: "approval.request", id: "1", name: "run_command", args: { command: "ls .." }, level: "confirm" },
+    ]);
+  });
+
+  it("auto-allows in-zone commands without asking (#75 regression guard)", async () => {
+    const { gate, ask } = setup();
+    expect(await gate.request({ id: "1", name: "run_command", args: { command: "ls -la" } })).toBe("allow");
+    expect(ask).not.toHaveBeenCalled();
+  });
+
   describe("critical config files cannot be 'always'-remembered (#63)", () => {
     it.each(["package.json", "package-lock.json", "tsconfig.json", ".github/workflows/ci.yml", ".agent.md", "AGENTS.md", ".agents/skills/x/SKILL.md"])(
       "keeps asking for %s even after an 'always' answer",
