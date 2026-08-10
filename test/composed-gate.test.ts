@@ -6,7 +6,7 @@ import type { ToolApprovalKind } from "../src/engine/tools/executor.ts";
 
 const WS = "D:/proj";
 
-function setup(answer: "allow" | "always" | "deny" = "allow") {
+function setup(answer: "allow" | "always" | "deny" = "allow", cage = false) {
   const bus = new EventBus();
   const events: EngineEvent[] = [];
   bus.on("approval.request", (p) => events.push({ type: "approval.request", ...p }));
@@ -17,7 +17,7 @@ function setup(answer: "allow" | "always" | "deny" = "allow") {
     run_command: "command",
   };
   const approvalKind = (name: string): ToolApprovalKind | undefined => kinds[name];
-  const gate = createComposedGate({ bus, workspace: WS, answerer: { ask }, approvalKind });
+  const gate = createComposedGate({ bus, workspace: WS, answerer: { ask }, approvalKind, cage });
   return { bus, events, ask, gate };
 }
 
@@ -119,6 +119,63 @@ describe("composed approval gate", () => {
       expect(await gate.request({ id: "1", name: "read_file", args: { path: "package.json" } })).toBe("allow");
       expect(ask).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("composed gate in cage mode (#87)", () => {
+  it("in-zone writes auto-allow without asking (worktree 零打扰)", async () => {
+    const { gate, ask, events } = setup("allow", true);
+    const decision = await gate.request({ id: "1", name: "write_file", args: { path: "src/new.ts" } });
+    expect(decision).toBe("allow");
+    expect(ask).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it("in-zone writes to cage config files still ask (never auto)", async () => {
+    const { gate, ask } = setup("allow", true);
+    const decision = await gate.request({ id: "1", name: "write_file", args: { path: "package.json" } });
+    expect(decision).toBe("allow"); // 人工批准后放行
+    expect(ask).toHaveBeenCalledOnce();
+  });
+
+  it("out-of-zone writes are denied without asking", async () => {
+    const { gate, ask, events } = setup("allow", true);
+    const outside = process.platform === "win32" ? "C:/Windows/x.txt" : "/etc/x.txt";
+    const decision = await gate.request({ id: "1", name: "write_file", args: { path: outside } });
+    expect(decision).toBe("deny");
+    expect(ask).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      { type: "approval.request", id: "1", name: "write_file", args: { path: outside }, level: "deny" },
+    ]);
+  });
+
+  it("git mutations fall to human approval, never auto-allow", async () => {
+    const { gate, ask, events } = setup("allow", true);
+    const decision = await gate.request({ id: "1", name: "run_command", args: { command: "git commit -m x" } });
+    expect(decision).toBe("allow"); // 人工批准后放行
+    expect(ask).toHaveBeenCalledOnce();
+    expect(events).toEqual([
+      { type: "approval.request", id: "1", name: "run_command", args: { command: "git commit -m x" }, level: "confirm" },
+    ]);
+  });
+
+  it("network commands fall to human approval, never auto-allow", async () => {
+    const { gate, ask } = setup("allow", true);
+    expect(await gate.request({ id: "1", name: "run_command", args: { command: "curl -s https://example.com" } })).toBe("allow");
+    expect(ask).toHaveBeenCalledOnce();
+  });
+
+  it("dev commands auto-allow in the cage without asking", async () => {
+    const { gate, ask } = setup("allow", true);
+    expect(await gate.request({ id: "1", name: "run_command", args: { command: "npm run typecheck" } })).toBe("allow");
+    expect(await gate.request({ id: "2", name: "run_command", args: { command: "tsc --noEmit" } })).toBe("allow");
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("normal mode is untouched: in-zone writes still confirm (no cage flag)", async () => {
+    const { gate, ask } = setup("allow", false);
+    await gate.request({ id: "1", name: "write_file", args: { path: "src/new.ts" } });
+    expect(ask).toHaveBeenCalledOnce();
   });
 });
 

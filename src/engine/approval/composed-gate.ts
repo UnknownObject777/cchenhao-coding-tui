@@ -22,6 +22,8 @@ export interface ComposedGateDeps {
   approvalKind: (name: string) => ToolApprovalKind | undefined;
   /** 会话恢复时回灌的「始终允许」记忆（#29：从 wire 的 approval.* 事件还原）。 */
   remembered?: ReadonlySet<string>;
+  /** #87 笼子模式（worktree 会话）：区内写与开发命令自动放行，笼子边界永不自动批准。缺省关闭（普通模式行为不变）。 */
+  cage?: boolean;
 }
 
 /** 从 wire 记录还原 always 记忆：decision=always 与同 id 的 request 配对取 memoryKey。 */
@@ -68,7 +70,7 @@ export function createComposedGate(deps: ComposedGateDeps): ApprovalGate {
   return {
     async request(call: ApprovalCall): Promise<ApprovalDecision> {
       const kind = deps.approvalKind(call.name);
-      const level = classifyCall(call, deps.workspace, kind);
+      const level = classifyCall(call, deps.workspace, kind, deps.cage === true ? "cage" : "normal");
       if (level === "allow") return "allow";
       if (level === "deny") {
         publishApprovalRequest(deps.bus, call, "deny");

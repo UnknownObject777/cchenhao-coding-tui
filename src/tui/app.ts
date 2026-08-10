@@ -120,6 +120,8 @@ export function assembleTui(
       answerer,
       approvalKind: agent.approvalKind,
       remembered: new Set(agent.approvalMemory),
+      // #87：worktree 会话 = 笼子模式，区内写/开发命令自动放行
+      cage: agent.worktree !== undefined,
     }),
   );
 

@@ -4,6 +4,9 @@
  * 工具分类（read/write/command）由 ToolDefinition.approval 自声明传入，本模块不维护工具名清单。
  * 自举安全（#63）：保护路径（.git）写/改一律 deny；关键配置文件强制 confirm（记忆旁路见 composed-gate）。
  * 出区必批（#75）：run_command 命令文本的越界意图（cd .. / 绝对路径区外 / 家目录）静态判定为出区 → confirm。
+ * 笼子刻度（#87）：cage 模式（worktree 会话，区根 = worktree 根）下区内写与开发命令（test/typecheck 等）
+ * 自动放行（零打扰）；出区写、git 变异（commit/merge/branch -d 等）、网络、笼子配置（package/tsconfig/AGENTS 等）
+ * 永不自动批准——必走人工 confirm/deny。普通模式行为保持不变。
  */
 import { relative, resolve, sep } from "node:path";
 import { isInsideWorkspace } from "../tools/workspace.ts";
@@ -13,11 +16,38 @@ import type { ApprovalCall } from "./gate.ts";
 
 export type RuleLevel = "allow" | "confirm" | "deny";
 
+/** 审批模式（#87）：cage = worktree 自进化会话（区根 = worktree 根，区内放行）；normal = 普通会话（现状行为）。 */
+export type ApprovalMode = "normal" | "cage";
+
 /** run_command 无害 pattern（命中即放行）：只读/构建/测试类。 */
 const SAFE_COMMAND_PATTERNS: RegExp[] = [
   /^(ls|dir|pwd|cat|type|echo|which|where)\b/i,
   /^git\s+(status|log|diff|show|branch|remote\s+-v)\b/i,
   /^npm\s+(test|run|ls|list|outdated|view)\b/,
+];
+
+/** cage 模式 git 只读子集（#87）：只读 git 照常自动放行，其余 git（commit/merge/add/branch -d 等变异）一律 confirm。 */
+const CAGE_GIT_READONLY: RegExp = /^git\s+(status|log|diff|show|remote\s+-v)\b/i;
+
+/** cage 模式网络命令（#87）：命中即 confirm，永不自动放行——即使普通模式的 SAFE 表会放行（npm outdated/view）。 */
+const CAGE_NETWORK_PATTERNS: RegExp[] = [
+  /\b(curl|wget|ssh|scp|sftp|rsync|telnet)\b/i,
+  /^git\s+(fetch|pull|clone)\b/i,
+  /^npm\s+(outdated|view|install|ci|add|update|init)\b/,
+  /^npx\b/,
+  /^pip\d?\s+install\b/,
+  /^go\s+get\b/,
+  /^cargo\s+(install|add|update)\b/,
+];
+
+/** cage 模式开发命令（#87）：typecheck/测试/构建类本地命令直接自动放行（零打扰；不发网络）。 */
+const CAGE_DEV_COMMAND_PATTERNS: RegExp[] = [
+  /^tsc\b/,
+  /^vitest\b/,
+  /^jest\b/,
+  /^mocha\b/,
+  /^eslint\b/,
+  /^prettier\b/,
 ];
 
 /** run_command 危险 pattern（命中即拒绝，不问）：删、推、提权、格式化、改/毁 .git（#63）。 */
@@ -142,14 +172,18 @@ export function classifyCall(
   call: ApprovalCall,
   workspace: string,
   kind: ToolApprovalKind | undefined,
+  mode: ApprovalMode = "normal",
 ): RuleLevel {
   if (kind === "read") return "allow";
 
   if (kind === "write") {
-    // 写工具约定首参为 path：区判定唯一入口（#74）——区内 confirm，区外/保护段一律 deny
+    // 写工具约定首参为 path：区判定唯一入口（#74）——区外/保护段一律 deny
     const path = typeof call.args["path"] === "string" ? call.args["path"] : undefined;
     if (path === undefined) return "deny";
-    return classifyPathZone(workspace, path) === "inside" ? "confirm" : "deny";
+    if (classifyPathZone(workspace, path) !== "inside") return "deny";
+    // 笼内（#87）：区内写自动放行（零打扰），但笼子配置（构建/测试门槛与自身行为文件）永不自动批准
+    if (mode === "cage" && !isCriticalConfigPath(workspace, path)) return "allow";
+    return "confirm";
   }
 
   if (kind === "command") {
@@ -157,6 +191,13 @@ export function classifyCall(
     if (DANGEROUS_COMMAND_PATTERNS.some((p) => p.test(command))) return "deny";
     // #75：出区必批——静态判定是启发式（可见即可，不追求不可绕过），命中出区意图绝不放行，交人工审批
     if (classifyCommandZone(workspace, command) === "outside") return "confirm";
+    if (mode === "cage") {
+      // 笼内 git 变异（非只读子集）与网络命令永不自动批准（#87）——先于 SAFE 表压过 allow
+      if (/^git\b/i.test(command) && !CAGE_GIT_READONLY.test(command)) return "confirm";
+      if (CAGE_NETWORK_PATTERNS.some((p) => p.test(command))) return "confirm";
+      // 笼内开发命令（typecheck/测试/构建）直接放行
+      if (CAGE_DEV_COMMAND_PATTERNS.some((p) => p.test(command))) return "allow";
+    }
     if (SAFE_COMMAND_PATTERNS.some((p) => p.test(command))) return "allow";
     return "confirm";
   }

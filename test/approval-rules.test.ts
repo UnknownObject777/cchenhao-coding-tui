@@ -178,3 +178,99 @@ describe("approval rules (classifyCall)", () => {
     });
   });
 });
+
+describe("cage mode: 区内放行 / 出区必批 (#87)", () => {
+  function classifyCage(name: string, args: Record<string, unknown>) {
+    return classifyCall({ id: "1", name, args }, WS, kindOf(name), "cage");
+  }
+
+  describe("in-zone writes auto-allow (worktree 零打扰)", () => {
+    it("write_file inside the zone is allow", () => {
+      expect(classifyCage("write_file", { path: "src/new.ts" })).toBe("allow");
+    });
+
+    it("edit_file inside the zone is allow", () => {
+      expect(classifyCage("edit_file", { path: "src/a.ts" })).toBe("allow");
+    });
+
+    it("read stays allow", () => {
+      expect(classifyCage("read_file", { path: "package.json" })).toBe("allow");
+    });
+  });
+
+  describe("cage boundaries never auto-approve", () => {
+    it("out-of-zone writes stay denied", () => {
+      const outside = process.platform === "win32" ? "C:/Windows/x.txt" : "/etc/x.txt";
+      expect(classifyCage("write_file", { path: outside })).toBe("deny");
+      expect(classifyCage("write_file", { path: "../outside.txt" })).toBe("deny");
+    });
+
+    it("protected paths stay denied", () => {
+      expect(classifyCage("write_file", { path: ".git/config" })).toBe("deny");
+      expect(classifyCage("edit_file", { path: ".git/HEAD" })).toBe("deny");
+    });
+
+    it("cage config files stay confirm even in-zone (#87 笼子配置不自动放行)", () => {
+      for (const path of ["package.json", "tsconfig.json", "AGENTS.md", ".github/workflows/ci.yml", ".agents/skills/x/SKILL.md"]) {
+        expect(classifyCage("write_file", { path })).toBe("confirm");
+      }
+    });
+
+    it("non-critical in-zone writes stay allow", () => {
+      expect(classifyCage("write_file", { path: "README.md" })).toBe("allow");
+    });
+  });
+
+  describe("dev commands auto-allow in the cage (跑测试/typecheck 零打扰)", () => {
+    it.each(["npm test", "npm run typecheck", "npm run build", "tsc --noEmit", "vitest run", "git status", "git diff HEAD~1", "ls -la"])(
+      "allow: %s",
+      (command) => {
+        expect(classifyCage("run_command", { command })).toBe("allow");
+      },
+    );
+  });
+
+  describe("cage commands that must fall to human approval, never auto-allow", () => {
+    it.each([
+      "git commit -m x",
+      "git add .",
+      "git merge dev",
+      "git branch -d old",
+      "git branch -D old",
+      "git fetch origin",
+      "git pull",
+      "git clone https://example.com/x.git",
+      "curl -s https://example.com",
+      "wget https://example.com/x.zip",
+      "npm outdated",
+      "npm view lodash version",
+      "npm install lodash",
+      "npx tsc --noEmit",
+      "ssh user@host ls",
+    ])("confirm: %s", (command) => {
+      expect(classifyCage("run_command", { command })).toBe("confirm");
+    });
+
+    it("git push stays denied (dangerous pattern wins, #63)", () => {
+      expect(classifyCage("run_command", { command: "git push origin master" })).toBe("deny");
+    });
+
+    it("out-of-zone commands stay confirm (出区必批, #75)", () => {
+      expect(classifyCage("run_command", { command: "ls .." })).toBe("confirm");
+    });
+  });
+
+  describe("normal mode keeps its existing behavior (no cage flag)", () => {
+    it("git branch -d was auto-allowed before and stays so in normal mode", () => {
+      expect(classify("run_command", { command: "git branch -d old" })).toBe("allow");
+    });
+
+    it("npm outdated was auto-allowed before and stays so in normal mode", () => {
+      expect(classify("run_command", { command: "npm outdated" })).toBe("allow");
+    });
+
+    it("in-zone writes stay confirm in normal mode", () => {
+      expect(classify("write_file", { path: "src/new.ts" })).toBe("confirm");
+    });
+  });
+});

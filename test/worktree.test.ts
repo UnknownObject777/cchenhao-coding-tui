@@ -149,4 +149,19 @@ describe("session binds the worktree root (#86)", () => {
     expect(agent.workspace).toBe(dir);
     expect(existsSync(join(dir, "worktrees"))).toBe(false);
   });
+
+  it("cage mode: in-zone writes auto-allow even without --yes (#87 区内放行零打扰)", async () => {
+    const agent = await bootstrap({
+      workspace: dir,
+      fake: true,
+      worktree: true,
+      sessionRoot: dir,
+      printApproval: { yes: false },
+    });
+    await agent.loop.runTurn("demo");
+
+    // 无 --yes（应答源拒绝一切 confirm）时区内写仍自动放行落盘；主工作区不被触碰
+    expect(existsSync(join(agent.workspace, "hello.txt"))).toBe(true);
+    expect(existsSync(join(dir, "hello.txt"))).toBe(false);
+  });
 });

@@ -165,6 +165,8 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
           process.stderr.write(`${message}\n`),
         ),
         approvalKind: (name) => executor.approvalKind(name),
+        // #87：worktree 会话 = 笼子模式，区内写/开发命令自动放行
+        cage: worktree !== undefined,
       })
     : undefined;
 
