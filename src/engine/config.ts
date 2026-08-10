@@ -16,6 +16,8 @@ export interface AgentConfigFile {
   system_prompt_file?: string;
   /** 上下文 token 预算覆盖（#57）；缺省 CONTEXT_TOKEN_BUDGET（256K）。非正数/非数字忽略。 */
   context_budget?: number;
+  /** 自进化会话开关（#86）：会话启动时建 worktrees/<slug> 独立 worktree + 分支并绑定该根。 */
+  worktree?: boolean;
 }
 
 export interface EffectiveConfig {
@@ -27,6 +29,8 @@ export interface EffectiveConfig {
   systemPromptFile?: string;
   /** 上下文 token 预算覆盖（#57）；未配置时 loop 用 CONTEXT_TOKEN_BUDGET 缺省。 */
   contextBudget?: number;
+  /** 自进化会话开关（#86）：--worktree 或配置 worktree:true 时启用。 */
+  worktree?: boolean;
   /** 字段 → 来源描述（如 "env:KIMI_MODEL"、"project:.agent.json"、"user:config.json"）。 */
   sources: Record<string, string>;
 }
@@ -93,6 +97,10 @@ export async function loadEffectiveConfig(workspace: string, home: string = home
       result.contextBudget = file.context_budget;
       result.sources["contextBudget"] = label;
     }
+    if (file.worktree === true) {
+      result.worktree = true;
+      result.sources["worktree"] = label;
+    }
   }
 
   for (const [field, envNames] of Object.entries(ENV_KEYS)) {
@@ -147,6 +155,7 @@ export function describeConfigSources(config: EffectiveConfig, apiKeyFallback: s
     "model",
     "systemPromptFile",
     "contextBudget",
+    "worktree",
   ];
   return fields
     .map((field) => {

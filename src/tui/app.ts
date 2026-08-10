@@ -142,6 +142,8 @@ export async function runTui(options: {
   workspace: string;
   fake: boolean;
   forceNew: boolean;
+  /** #86 自进化会话：每会话一个 worktree，天然是新会话，跳过「继续上次」选择。 */
+  worktree: boolean;
   info: Omit<TuiAppInfo, "model" | "cwd">;
 }): Promise<void> {
   const tui = new TUI(new ProcessTerminal());
@@ -163,9 +165,9 @@ export async function runTui(options: {
   };
 
   try {
-    // 会话选择（#47）：有历史会话且未 --new 时先问
+    // 会话选择（#47）：有历史会话且未 --new 时先问；worktree 模式每会话一棵新树，一律新会话
     const store = new SessionStore(SessionStore.defaultRoot(), options.workspace);
-    const sessions = options.forceNew ? [] : await store.list();
+    const sessions = options.forceNew || options.worktree ? [] : await store.list();
     const choice =
       sessions.length === 0 ? { kind: "new" as const } : await pickSession(tui, sessions, earlyExit);
 
@@ -173,9 +175,11 @@ export async function runTui(options: {
       workspace: options.workspace,
       fake: options.fake,
       session: choice.kind === "resume" ? { resume: choice.path } : "new",
+      worktree: options.worktree,
     });
 
-    app = assembleTui(tui, agent, { ...options.info, model: agent.model, cwd: options.workspace }, shutdown);
+    // cwd 展示会话真正的工作根：#86 worktree 模式下是 worktrees/<slug>，普通模式即原工作区
+    app = assembleTui(tui, agent, { ...options.info, model: agent.model, cwd: agent.workspace }, shutdown);
   } catch (error) {
     // bootstrap 失败（如无凭证）不能留 raw mode 卡死终端
     tui.stop();

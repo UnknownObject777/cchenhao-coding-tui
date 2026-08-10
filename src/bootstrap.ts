@@ -16,6 +16,7 @@ import { ToolExecutor, type ToolApprovalKind } from "./engine/tools/executor.ts"
 import { registerWebTools } from "./engine/tools/web.ts";
 import { TodoStore } from "./engine/todo.ts";
 import { Rebuilder, WireEventSink, WireService, type RebuiltMessage } from "./engine/wire.ts";
+import { ensureWorktree, worktreeSlug, type WorktreeInfo } from "./engine/worktree.ts";
 
 const SYSTEM_PROMPT = `You are a minimal coding agent running in a terminal. \
 Your workspace is the current directory. \
@@ -48,6 +49,8 @@ export interface Agent {
   skills: Skill[];
   /** todo 列表状态（#58）：TUI footer 初始化与恢复会话还原用（实时变更走 todo.updated 事件）。 */
   todos: TodoStore;
+  /** #86 自进化会话绑定的 worktree 信息（根/分支/相对路径）；非 worktree 模式为 undefined。 */
+  worktree?: WorktreeInfo;
 }
 
 export interface BootstrapOptions {
@@ -62,11 +65,30 @@ export interface BootstrapOptions {
   sessionRoot?: string;
   /** 测试缝：覆盖 home 目录（配置文件用户级查找）。 */
   homeDir?: string;
+  /** #86 自进化会话：启动时在 worktrees/<slug> 建独立 worktree + 分支，会话全程绑定该根。 */
+  worktree?: boolean;
 }
 
 /** 组合根：显式装配 Engine 各部件。 */
 export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
-  const workspace = options.workspace;
+  // 配置先于 worktree 读取：自进化开关可能来自项目级 .agent.json（主工作区），必须先看主仓库配置
+  const mainWorkspace = options.workspace;
+  const home = options.homeDir ?? homedir();
+  const config = await loadEffectiveConfig(mainWorkspace, home);
+
+  // #86 自进化会话（--worktree 或配置 worktree:true）：在 worktrees/<slug> 创建独立 worktree + 独立分支，
+  // 会话全程绑定该根——下面所有 workspace 派生（会话目录、工具区根、审批区、系统 prompt、skills、git 感知）都用 worktree 根。
+  let workspace = mainWorkspace;
+  let worktree: WorktreeInfo | undefined;
+  if (options.worktree === true || config.worktree === true) {
+    worktree = await ensureWorktree(mainWorkspace, worktreeSlug());
+    workspace = worktree.root;
+    // print 模式（无 TUI raw mode 干扰）把就绪信息打到 stderr，供「创建与进入可演示」；TUI 由欢迎页 cwd 展示
+    if (options.printApproval !== undefined) {
+      process.stderr.write(`[worktree] 自进化会话就绪：${worktree.root}（分支 ${worktree.branch}）\n`);
+    }
+  }
+
   const bus = new EventBus();
 
   // 会话文件（#30）：按工作区分目录；continue 复用最近会话并冷重建（#29）
@@ -106,10 +128,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
   const executor = new ToolExecutor();
   registerBuiltinTools(executor, workspace, todos, { sessionPath });
 
-  // 配置合并（#38）：env > 项目级 .agent.json > 用户级 config.json
-  const home = options.homeDir ?? homedir();
-  const config = await loadEffectiveConfig(workspace, home);
-
+  // 配置合并（#38）：env > 项目级 .agent.json > 用户级 config.json（已在顶部读取，见 worktree 开关）
   // 系统 prompt（#39）：显式配置 > 项目级 .agent.md > 内置默认
   const { prompt: promptBase, source: promptSource } = await resolveSystemPrompt(config, workspace, SYSTEM_PROMPT);
 
@@ -170,7 +189,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<Agent> {
         `and avoid overwriting them (prefer edit_file; re-read before write_file).`,
     );
   }
-  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt, skills, todos };
+  return { loop, bus, wire, workspace, approvalKind: (name) => executor.approvalKind(name), model, sessionPath, history, approvalMemory, systemPrompt, skills, todos, worktree };
 }
 
 /** fake 演示脚本：写 hello.txt → 读回 → 总结。 */

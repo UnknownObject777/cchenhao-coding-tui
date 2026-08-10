@@ -115,6 +115,18 @@ describe("loadEffectiveConfig (#38)", () => {
     const config = await loadEffectiveConfig(ws, home);
     expect(config.contextBudget).toBeUndefined();
   });
+
+  it("worktree: true 开关记录来源（#86）", async () => {
+    await writeFile(join(ws, ".agent.json"), JSON.stringify({ worktree: true }));
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.worktree).toBe(true);
+    expect(config.sources["worktree"]).toBe("project:.agent.json");
+  });
+
+  it("worktree 未配置时保持关闭（#86）", async () => {
+    const config = await loadEffectiveConfig(ws, home);
+    expect(config.worktree).toBeUndefined();
+  });
 });
 
 describe("system prompt override (#39)", () => {

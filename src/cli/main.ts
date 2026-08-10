@@ -12,6 +12,8 @@ const USAGE = `mini coding agent
   mini-agent -p --yes|-y "..."  放行写/执行类工具调用（危险 pattern 仍被规则引擎拒绝）
   mini-agent                 交互式 TUI（默认继续该目录的最近会话）
   mini-agent --new           交互式 TUI，强制新会话
+  mini-agent --worktree      自进化会话：在 worktrees/<slug> 建独立 worktree + 分支，会话全程绑定该根
+                             （也可在项目 .agent.json 配 "worktree": true 启用）
 
 环境变量:
   KIMI_API_KEY   直接用 API key（不设置则读 kimi-code 订阅的 OAuth 凭证）
@@ -31,11 +33,12 @@ async function main(): Promise<void> {
   // 先挑出带值/不带值的已知旗标，余下位置参数再取 -p 的值
   const yes = rawArgs.includes("--yes") || rawArgs.includes("-y");
   const newSession = rawArgs.includes("--new");
+  const worktree = rawArgs.includes("--worktree");
   let formatValue: string | undefined;
   const positional: string[] = [];
   for (let i = 0; i < rawArgs.length; i += 1) {
     const a = rawArgs[i]!;
-    if (a === "--yes" || a === "-y" || a === "--new") continue;
+    if (a === "--yes" || a === "-y" || a === "--new" || a === "--worktree") continue;
     if (a === "--output-format") {
       formatValue = rawArgs[i + 1];
       i += 1;
@@ -58,6 +61,8 @@ async function main(): Promise<void> {
       fake: process.env["FAKE_LLM"] === "1",
       // print 模式无人可问：装配 --yes 审批策略（#27）；TUI 模式的交互审批归 #28
       printApproval: { yes },
+      // #86 自进化会话：worktrees/<slug> 独立 worktree + 分支
+      worktree,
     });
     process.exit(await runPrompt(agent, prompt, { ...(outputFormat !== undefined ? { outputFormat } : {}) }));
   }
@@ -67,6 +72,7 @@ async function main(): Promise<void> {
     workspace: process.cwd(),
     fake: process.env["FAKE_LLM"] === "1",
     forceNew: newSession,
+    worktree,
     info: {
       toolName: "mini-agent",
       version: pkg.version,
