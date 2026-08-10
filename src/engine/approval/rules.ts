@@ -4,8 +4,9 @@
  * 工具分类（read/write/command）由 ToolDefinition.approval 自声明传入，本模块不维护工具名清单。
  * 自举安全（#63）：保护路径（.git）写/改一律 deny；关键配置文件强制 confirm（记忆旁路见 composed-gate）。
  */
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { isInsideWorkspace } from "../tools/workspace.ts";
+import { classifyPathZone } from "../zone.ts";
 import type { ToolApprovalKind } from "../tools/executor.ts";
 import type { ApprovalCall } from "./gate.ts";
 
@@ -31,8 +32,11 @@ const DANGEROUS_COMMAND_PATTERNS: RegExp[] = [
   /\bgit\s+checkout\s+(--|\.(?=\s|$))/i,
 ];
 
-/** 保护路径段（#63）：工作区内也不可写的目录——.git 仓库元数据。段名大小写不敏感（Windows FS）。 */
-const PROTECTED_PATH_SEGMENTS = [".git"];
+/** 相对工作区路径（供关键文件判定；越界返回 "../…" 形态由调用方处理）。 */
+function workspaceRelative(workspace: string, path: string): string {
+  const root = resolve(workspace);
+  return relative(root, resolve(root, path));
+}
 
 /**
  * 关键文件（#63）：写操作强制 confirm、`a` 也不入会话记忆——改它们会改变构建/测试门槛
@@ -40,22 +44,6 @@ const PROTECTED_PATH_SEGMENTS = [".git"];
  */
 export const CRITICAL_WRITE_BASENAMES = ["package.json", "package-lock.json", "tsconfig.json", ".agent.md", "AGENTS.md"];
 export const CRITICAL_WRITE_SEGMENTS = [".github", ".agents"];
-
-/** 相对工作区路径（供区内/保护段判定；越界返回 "../…" 形态由调用方处理）。 */
-function workspaceRelative(workspace: string, path: string): string {
-  const root = resolve(workspace);
-  return relative(root, resolve(root, path));
-}
-
-/**
- * 相对工作区解析后任一路径段命中保护段（.git/…，含嵌套如 vendor/x/.git/）→ 禁止写。
- * 越界由 isInsideWorkspace 负责，本函数只处理区内路径。
- */
-function isProtectedWritePath(workspace: string, path: string): boolean {
-  const rel = workspaceRelative(workspace, path).toLowerCase();
-  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return false;
-  return PROTECTED_PATH_SEGMENTS.some((seg) => rel.split(sep).includes(seg));
-}
 
 /** 关键文件判定：basename 精确命中或首段命中（.github/…、.agents/…）。仅对工作区内路径有意义。 */
 export function isCriticalConfigPath(workspace: string, path: string): boolean {
@@ -74,11 +62,10 @@ export function classifyCall(
   if (kind === "read") return "allow";
 
   if (kind === "write") {
-    // 写工具约定首参为 path：路径必须在工作区内，且不得触及保护段（.git，#63）
+    // 写工具约定首参为 path：区判定唯一入口（#74）——区内 confirm，区外/保护段一律 deny
     const path = typeof call.args["path"] === "string" ? call.args["path"] : undefined;
-    if (path === undefined || !isInsideWorkspace(workspace, path)) return "deny";
-    if (isProtectedWritePath(workspace, path)) return "deny";
-    return "confirm";
+    if (path === undefined) return "deny";
+    return classifyPathZone(workspace, path) === "inside" ? "confirm" : "deny";
   }
 
   if (kind === "command") {
